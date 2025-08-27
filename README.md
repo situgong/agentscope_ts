@@ -121,10 +121,10 @@ Welcome to join our community on
   - [💻 Installation](#-installation)
     - [🛠️ From source](#-from-source)
     - [📦 From PyPi](#-from-pypi)
-- [Example](#example)
+- [📝 Example](#-example)
   - [👋 Hello AgentScope!](#-hello-agentscope)
   - [🎯 Realtime Steering](#-realtime-steering)
-- [🛠️ Fine-Grained MCP Control](#-fine-grained-mcp-control)
+  - [🛠️ Fine-Grained MCP Control](#-fine-grained-mcp-control)
   - [🧑‍🤝‍🧑 Multi-Agent Conversation](#-multi-agent-conversation)
   - [💻 AgentScope Studio](#-agentscope-studio)
 - [📖 Documentation](#-documentation)
@@ -157,7 +157,7 @@ pip install -e .
 pip install agentscope
 ```
 
-## Example
+## 📝 Example
 
 ### 👋 Hello AgentScope!
 
@@ -211,7 +211,7 @@ Natively support **realtime interruption** in ``ReActAgent`` with robust memory 
   <img src="./assets/images/realtime_steering_en.gif" alt="Realtime Steering" width="49%"/>
 </p>
 
-## 🛠️ Fine-Grained MCP Control
+### 🛠️ Fine-Grained MCP Control
 
 Developers can obtain the MCP tool as a **local callable function**, and use it anywhere (e.g. call directly, pass to agent, wrap into a more complex tool, etc.)
 
