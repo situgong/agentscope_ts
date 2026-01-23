@@ -5,7 +5,8 @@ This module provides wrapper classes that allow AgentScope models to be used
 with the mem0 library for long-term memory functionality.
 """
 import asyncio
-from typing import Any, Dict, List, Literal
+import threading
+from typing import Any, Coroutine, Dict, List, Literal
 
 from mem0.configs.embeddings.base import BaseEmbedderConfig
 from mem0.configs.llms.base import BaseLlmConfig
@@ -14,6 +15,64 @@ from mem0.llms.base import LLMBase
 
 from ....embedding import EmbeddingModelBase
 from ....model import ChatModelBase, ChatResponse
+
+
+def _run_async(
+    coro: Coroutine,
+    target_loop: asyncio.AbstractEventLoop | None = None,
+) -> Any:
+    """Run an async coroutine, handling nested event loops.
+    Args:
+        coro (`Coroutine`):
+            The coroutine to run.
+        target_loop (`asyncio.AbstractEventLoop | None`, optional):
+            Optional target event loop where the coroutine should
+            run. If provided and still valid, the coroutine will be
+            scheduled in that loop using run_coroutine_threadsafe.
+    Returns:
+        `Any`:
+            The result of the coroutine.
+    """
+    # If we have a target loop (where the model client was created),
+    # use run_coroutine_threadsafe to run in that loop
+    if target_loop is not None and not target_loop.is_closed():
+        future = asyncio.run_coroutine_threadsafe(coro, target_loop)
+        return future.result()
+
+    # No target loop or target loop is closed, use standard approach
+    try:
+        # Try to get the running event loop
+        asyncio.get_running_loop()
+        # There's a running event loop. Use thread-based approach to avoid
+        # event loop binding issues with clients like Ollama.
+
+        result_container = {"result": None, "exception": None}
+        event = threading.Event()
+
+        def run_in_thread() -> None:
+            # Create a new event loop in this thread
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                result_container["result"] = new_loop.run_until_complete(coro)
+            except Exception as e:
+                result_container["exception"] = e
+            finally:
+                new_loop.close()
+                event.set()
+
+        # Run in a separate thread to avoid event loop binding issues
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        event.wait()
+
+        exception = result_container["exception"]
+        if exception is not None:
+            raise exception
+        return result_container["result"]
+    except RuntimeError:
+        # No running event loop, we can use asyncio.run directly
+        return asyncio.run(coro)
 
 
 class AgentScopeLLM(LLMBase):
@@ -39,6 +98,14 @@ class AgentScopeLLM(LLMBase):
             raise ValueError("`model` must be an instance of ChatModelBase")
 
         self.agentscope_model = self.config.model
+        # Store the event loop where the model was created (if any)
+        # This helps ensure the model client (e.g., Ollama) is used in the
+        # same loop context to avoid event loop binding issues
+        try:
+            self._creation_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop when model was created
+            self._creation_loop = None
 
     def _parse_response(
         self,
@@ -141,7 +208,13 @@ class AgentScopeLLM(LLMBase):
                     tools=tools,
                 )
 
-            response = asyncio.run(_async_call())
+            # Use _run_async which will handle event loop context properly
+            # Pass the creation loop to ensure the model client runs in the
+            # same loop where it was created, avoiding Event binding issues
+            response = _run_async(
+                _async_call(),
+                target_loop=self._creation_loop,
+            )
             has_tool = tools is not None
 
             # Extract text from the response content blocks
@@ -187,6 +260,14 @@ class AgentScopeEmbedding(EmbeddingBase):
             )
 
         self.agentscope_model = self.config.model
+        # Store the event loop where the model was created (if any)
+        # This helps ensure the model client (e.g., Ollama) is used in the
+        # same loop context to avoid event loop binding issues
+        try:
+            self._creation_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop when model was created
+            self._creation_loop = None
 
     def embed(
         self,
@@ -221,7 +302,13 @@ class AgentScopeEmbedding(EmbeddingBase):
                 response = await self.agentscope_model(text_list)
                 return response
 
-            response = asyncio.run(_async_call())
+            # Use _run_async which will handle event loop context properly
+            # Pass the creation loop to ensure the model client runs in the
+            # same loop where it was created, avoiding Event binding issues
+            response = _run_async(
+                _async_call(),
+                target_loop=self._creation_loop,
+            )
 
             # Extract the embedding vector from the first Embedding object
             # response.embeddings is a list of Embedding objects
