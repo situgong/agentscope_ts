@@ -97,13 +97,13 @@ class DeepSeekChatModel(ChatModelBase):
                 ``DeepSeekChatFormatter`` instance will be used.
         """
         super().__init__(
+            credential=credential,
             model=model,
+            parameters=parameters or self.Parameters(),
             stream=stream,
             max_retries=max_retries,
             context_size=context_size,
         )
-        self.credential = credential
-        self.parameters = parameters or self.Parameters()
         self.formatter = formatter or DeepSeekChatFormatter()
 
     async def _call_api(
