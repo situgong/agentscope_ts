@@ -22,6 +22,9 @@ else:
     ResponseStreamEvent = Any
     AsyncStream = Any
 
+# kwargs accepted by Chat Completions but NOT by the Responses API.
+_RESPONSES_UNSUPPORTED_KWARGS = frozenset({"modalities", "audio"})
+
 
 class OpenAIResponseModel(ChatModelBase):
     """The OpenAI Responses API chat model.
@@ -176,7 +179,18 @@ class OpenAIResponseModel(ChatModelBase):
                 "effort": self.parameters.reasoning_effort,
             }
 
-        api_kwargs.update(generate_kwargs)
+        # The Responses API does not yet support audio output
+        # (modalities / audio params).  Strip them so callers that
+        # mistakenly pass Chat-Completions-style audio kwargs don't
+        # trigger a TypeError.
+        # https://developers.openai.com/api/docs/guides/migrate-to-responses
+        api_kwargs.update(
+            {
+                k: v
+                for k, v in generate_kwargs.items()
+                if k not in _RESPONSES_UNSUPPORTED_KWARGS
+            },
+        )
 
         fmt_tools, fmt_tool_choice = self._format_tools(tools, tool_choice)
         if fmt_tools is not None:
