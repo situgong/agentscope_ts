@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """The utility module for unit tests in agentscope."""
+import json
 from typing import Any, AsyncGenerator, Type
 
 from pydantic import BaseModel
@@ -9,7 +10,7 @@ from agentscope.message import Msg
 from agentscope.model import ChatModelBase, ChatResponse, StructuredResponse
 
 
-class AnyString:
+class AnyString(str):
     """A helper class for asserting any string value in unit tests."""
 
     def __eq__(self, other: object) -> bool:
@@ -39,6 +40,7 @@ class MockModel(ChatModelBase):
     def __init__(
         self,
         model: str = "mock-model",
+        stream: bool = True,
         context_size: int = 1000,
         mock_chat_responses: list | None = None,
         mock_structured_response: Any = None,
@@ -47,6 +49,7 @@ class MockModel(ChatModelBase):
         super().__init__(
             credential=MockCredential(),
             model=model,
+            stream=stream,
             parameters=MockModel.Parameters(),
             context_size=context_size,
         )
@@ -103,3 +106,9 @@ class MockModel(ChatModelBase):
     ) -> StructuredResponse:
         """Mock the API call with structured output."""
         return self.mock_structured_response
+
+
+def compare_by_printing(a: Any, b: Any) -> None:
+    """Compare the expected output with the actual output by printing them."""
+    print(json.dumps(a, indent=4))
+    print(json.dumps(b, indent=4))

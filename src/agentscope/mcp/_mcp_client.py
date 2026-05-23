@@ -14,9 +14,10 @@ from ._config import StdioMCPConfig, HttpMCPConfig
 from .._logging import logger
 
 if TYPE_CHECKING:
-    from ..tool import MCPTool
+    from ..tool import MCPTool, ToolBase
 else:
     MCPTool = Any
+    ToolBase = Any
 
 
 class MCPClient(BaseModel):
@@ -84,6 +85,18 @@ class MCPClient(BaseModel):
         description="The MCP server configuration.",
     )
 
+    enable_tools: list[str] | None = None
+    """The tools enabled in this MCP, which will be returned in the
+    `list_tools` function. If `None`, all tools from the MCP server will be
+    returned."""
+
+    disable_tools: list[str] | None = None
+    """The tools disabled in this MCP, which will be filtered out in the
+    `list_tools` function."""
+
+    execution_timeout: float | None = None
+    """The execution timeout in seconds for calling the tools from this MCP."""
+
     # Private attributes
     _client: Any = PrivateAttr(default=None)
     _session: ClientSession | None = PrivateAttr(default=None)
@@ -107,6 +120,35 @@ class MCPClient(BaseModel):
             raise ValueError(
                 "STDIO MCP must be stateful (is_stateful=True).",
             )
+
+        # Check arguments for self.enable_tools and disable_tools
+        if self.enable_tools is not None:
+            if not isinstance(self.enable_tools, list) or any(
+                not isinstance(_, str) for _ in self.enable_tools
+            ):
+                raise ValueError(
+                    "Enable tools should be a list of strings, but got "
+                    f"{self.enable_tools}.",
+                )
+
+        if self.disable_tools is not None:
+            if not isinstance(self.disable_tools, list) or any(
+                not isinstance(_, str) for _ in self.disable_tools
+            ):
+                raise ValueError(
+                    "Disable tools should be a list of strings, but got "
+                    f"{self.disable_tools}.",
+                )
+
+        if self.enable_tools is not None and self.disable_tools is not None:
+            intersection = set(self.enable_tools).intersection(
+                set(self.disable_tools),
+            )
+            if len(intersection) != 0:
+                raise ValueError(
+                    f"The tools in enable_tools and disable_tools "
+                    f"should not overlap, but got {intersection}.",
+                )
 
         # Initialize the underlying client
         self._initialize_client()
@@ -240,15 +282,19 @@ class MCPClient(BaseModel):
         else:
             return self._create_http_client()
 
-    async def list_tools(self) -> list[mcp.types.Tool]:
-        """List all available tools from the MCP server.
+    async def list_tools(self) -> list[ToolBase]:
+        """List available tools from the MCP server. If `enable_tools` and
+        `disable_tools` are not `None` in the constructor, the returned
+        tools will be filtered accordingly.
 
         Returns:
-            List of available MCP tools.
+            `list[ToolBase]`:
+                List of available MCP tools.
 
         Raises:
             RuntimeError: If not connected (for stateful connections).
         """
+        available_tools: list[mcp.types.Tool] = []
         if not self.is_stateful:
             # Stateless: create temporary session
             async with self._get_client_gen() as cli:
@@ -260,18 +306,31 @@ class MCPClient(BaseModel):
                     await session.initialize()
                     res = await session.list_tools()
                     self._cached_tools = res.tools
-                    return res.tools
+                    available_tools = res.tools
         else:
             # Stateful: use existing session
             self._validate_connection()
             res = await self._session.list_tools()
             self._cached_tools = res.tools
-            return res.tools
+            available_tools = res.tools
+
+        # Filter tools based on enable_tools and disable_tools
+        if self.enable_tools is not None:
+            available_tools = [
+                tool
+                for tool in available_tools
+                if tool.name in self.enable_tools
+            ]
+        if self.disable_tools is not None:
+            available_tools = [
+                _ for _ in available_tools if _.name not in self.disable_tools
+            ]
+
+        return [await self.get_tool(_.name) for _ in available_tools]
 
     async def get_tool(
         self,
         name: str,
-        execution_timeout: float | None = None,
     ) -> MCPTool:
         """Get a tool by name from the MCP server.
 
@@ -281,8 +340,6 @@ class MCPClient(BaseModel):
 
         Args:
             name: The name of the tool function to get.
-            execution_timeout: The preset timeout in seconds for calling
-                the tool function.
 
         Returns:
             A tool object that implements ToolProtocol.
@@ -317,7 +374,7 @@ class MCPClient(BaseModel):
                 mcp_name=self.name,
                 tool=target_tool,
                 client_gen=self._get_client_gen,
-                timeout=execution_timeout,
+                timeout=self.execution_timeout,
             )
         else:
             # Stateful: pass session
@@ -326,7 +383,7 @@ class MCPClient(BaseModel):
                 mcp_name=self.name,
                 tool=target_tool,
                 session=self._session,
-                timeout=execution_timeout,
+                timeout=self.execution_timeout,
             )
 
     def _validate_connection(self) -> None:

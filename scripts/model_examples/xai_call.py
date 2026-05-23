@@ -19,7 +19,8 @@ from agentscope.message import (
 )
 from agentscope.model import XAIChatModel
 from agentscope.credential import XAICredential
-from agentscope.tool import Toolkit, ToolChoice
+from agentscope.tool import Toolkit, ToolChoice, FunctionTool
+
 
 # ---------------------------------------------------------------------------
 # Example 1: Simple user message (streaming, with reasoning)
@@ -72,9 +73,8 @@ async def example_tool_call() -> None:
 
     Uses grok-4.3, xAI's flagship mainstream model.
     """
-    toolkit = Toolkit()
-    toolkit.register_function(get_weather)
-    tools = toolkit.get_function_schemas()
+    toolkit = Toolkit(tools=[FunctionTool(get_weather)])
+    tools = await toolkit.get_tool_schemas()
 
     model = XAIChatModel(
         credential=XAICredential(

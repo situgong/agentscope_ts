@@ -5,7 +5,7 @@ from ._types import ToolChoice, Function, RegisteredTool
 from ._response import ToolResponse, ToolChunk
 from ._toolkit import Toolkit
 from ._base import ToolBase
-from ._adapters import MCPTool
+from ._adapters import MCPTool, FunctionTool
 from ._builtin import (
     ResetTools,
     Bash,
@@ -21,6 +21,7 @@ from ._task import (
     TaskList,
     TaskCreate,
 )
+from ._tool_group import ToolGroup
 
 __all__ = [
     # Basic tool related types and functions
@@ -28,6 +29,8 @@ __all__ = [
     "Function",
     "ToolBase",
     "MCPTool",
+    "FunctionTool",
+    "ToolGroup",
     "Toolkit",
     "ToolChunk",
     "ToolResponse",

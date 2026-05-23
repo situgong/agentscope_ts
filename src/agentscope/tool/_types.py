@@ -53,7 +53,7 @@ class RegisteredTool:
                     f"Invalid input_schema: {self.tool.input_schema}. ",
                 )
 
-    def get_function_schema(
+    def get_tool_schema(
         self,
         extended_model: Type[BaseModel] | None = None,
     ) -> dict:
@@ -151,22 +151,6 @@ class RegisteredTool:
                 merged_params["$defs"][def_key] = def_value_copy
 
         return function_schema
-
-
-@dataclass
-class ToolGroup:
-    """The tool group abstraction that provides a higher level of organization
-    for tools."""
-
-    name: str
-    """The group name, which will be used in the reset function as the group
-    identifier."""
-    description: str
-    """The description of the tool group to tell the agent what the tool
-    group is about."""
-    instructions: str | None = None
-    """The instructions that will be contained when this tool group is
-    activated."""
 
 
 # The function types that can be registered as tools in AgentScope.

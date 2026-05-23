@@ -83,6 +83,7 @@ from ..permission import (
     PermissionEngine,
     PermissionDecision,
 )
+from ..workspace import Offloader
 
 if TYPE_CHECKING:
     from ..middleware import MiddlewareBase
@@ -98,24 +99,66 @@ class Agent:
         name: str,
         system_prompt: str,
         model: ChatModelBase,
-        toolkit: Toolkit,
+        toolkit: Toolkit | None = None,
         middlewares: list[MiddlewareBase] | None = None,
         state: AgentState | None = None,
+        offloader: Offloader | None = None,
+        # The agent configurations
         model_config: ModelConfig = ModelConfig(),
         context_config: ContextConfig = ContextConfig(),
         react_config: ReActConfig = ReActConfig(),
     ) -> None:
+        """Initialize the agent class in AgentScope.
+
+        Args:
+            name (`str`):
+                The agent identifier.
+            system_prompt (`str`):
+                The agent's system prompt. Additional instructions may be
+                appended to it dynamically during operation.
+            model (`ChatModelBase`):
+                The chat model/llm used for this agent.
+            toolkit (`Toolkit | None`, optional):
+                The toolkit used for registering tools, MCPs and skills as the
+                sole source.
+            middlewares (`list[MiddlewareBase] | None`):
+                Middlewares applied to the agent to modify its behavior
+                without altering its source code. Supported hook points
+                include: reply, reasoning, acting, model call, and system
+                prompt retrieval.
+            state (`AgentState`):
+                The agent state. A new state will be created if not provided.
+            offloader (`Offloader | None`, optional):
+                The context offloader. If provided, the compressed context and
+                tool result will be offloaded.
+            model_config (`ModelConfig`):
+                The additional chat model configuration including fallback
+                model and retries.
+            context_config (`CompressionConfig`):
+                The context config for context compression and tool result
+                compression.
+            react_config (`ReActConfig`):
+                The config for the reasoning-acting loop.
+        """
         self.name = name
         self._system_prompt = system_prompt
         self.model = model
-        self.toolkit = toolkit
         self.state = state or AgentState()
 
         self.model_config = model_config
         self.context_config = context_config
         self.react_config = react_config
 
+        # The permission engine
         self._engine = PermissionEngine(self.state.permission_context)
+
+        # The offloader/workspace
+        self.offloader = offloader
+
+        # ====================================================================
+        # The Tool-related logics
+        # ====================================================================
+        self.toolkit = toolkit or Toolkit()
 
         # ====================================================================
         # The Middleware-related attributes
@@ -381,6 +424,18 @@ class Agent:
 
         # Update the summary
         self.state.summary = cfg.summary_template.format(**res.content)
+
+        if self.offloader:
+            path = await self.offloader.offload_context(
+                self.state.session_id,
+                msgs=msgs_to_compress,
+            )
+
+            self.state.summary += (
+                f"\n<system-reminder>The compressed context is offloaded to "
+                f"'{path}', you can refer to it when needed.</system-reminder>"
+            )
+
         # Update the context
         self.state.context = msgs_to_reserve
 
@@ -604,7 +659,7 @@ class Agent:
         | Msg,
         None,
     ]:
-        """Reasoning entry point (may be wrapped by middleware)."""
+        """Reasoning entry point (maybe wrapped by middleware)."""
         if not self._reasoning_middlewares:
             async for item in self._reasoning_impl(tool_choice=tool_choice):
                 yield item
@@ -986,14 +1041,11 @@ class Agent:
         # concurrently or not
         batches: list[_ToolCallBatch] = []
         for tool_call in tool_calls:
-            registered_tool = self.toolkit.tools.get(tool_call.name)
+            tool = await self.toolkit.get_tool(tool_call.name)
 
             # Treat unregistered or unavailable tools as concurrent tools since
             # it will not generate side effects and be blocked with acting
-            if (
-                registered_tool is None
-                or registered_tool.tool.is_concurrency_safe
-            ):
+            if tool is None or tool.is_concurrency_safe:
                 if len(batches) == 0 or batches[-1].type != "concurrent":
                     batches.append(
                         _ToolCallBatch(
@@ -1209,7 +1261,7 @@ class Agent:
         # ===================================================================
         try:
             # Check if the tool is available
-            tool = self.toolkit.check_tool_available(
+            tool = await self.toolkit.check_tool_available(
                 tool_call.name,
                 self.state.tool_context.activated_groups,
             )
@@ -1353,8 +1405,27 @@ class Agent:
                         reminder = (
                             "\n<<<TRUNCATED>>>\n<system-reminder>The "
                             "remaining content has been omitted for "
-                            "limited context.</system-reminder>"
+                            "limited context.{offload_reminder}"
+                            "</system-reminder>"
                         )
+
+                        offload_reminder = ""
+                        if self.offloader:
+                            path = await self.offloader.offload_tool_result(
+                                self.state.session_id,
+                                offload_tool_result_block,
+                            )
+
+                            offload_reminder = (
+                                f" You can refer to the file in '{path}' "
+                                f"for the truncated content if needed."
+                            )
+
+                        reminder = reminder.format(
+                            offload_reminder=offload_reminder,
+                        )
+
+                        # Insert the reminder to the tool result output
                         if isinstance(reserved_tool_result_block.output, str):
                             reserved_tool_result_block.output += reminder
 
@@ -1372,8 +1443,6 @@ class Agent:
                             reserved_tool_result_block.output += [
                                 TextBlock(text=reminder),
                             ]
-
-                        # TODO: offload the tool result
 
                     self._save_to_context([reserved_tool_result_block])
                     # Ends the tool call lifecycle.
@@ -1850,7 +1919,7 @@ class Agent:
         messages.extend(self.state.context)
 
         # Get the tools schemas
-        tools = self.toolkit.get_function_schemas(
+        tools = await self.toolkit.get_tool_schemas(
             self.state.tool_context.activated_groups,
         )
 
