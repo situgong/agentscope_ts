@@ -480,6 +480,8 @@ class Agent:
                 f"'{path}', you can refer to it when needed.</system-reminder>"
             )
 
+        await self._clear_unreserved_read_cache(msgs_to_reserve)
+
         # Update the context
         self.state.context = msgs_to_reserve
 
@@ -1773,6 +1775,32 @@ class Agent:
             msgs_to_reserve = [boundary_msg_to_reserve] + msgs_to_reserve
 
         return msgs_to_compress, msgs_to_reserve
+
+    async def _clear_unreserved_read_cache(
+        self,
+        msgs_to_reserve: list[Msg],
+    ) -> None:
+        """Clean Read caches not referenced by reserved Read tool calls."""
+        reserved_paths: set[str] = set()
+        for msg in msgs_to_reserve:
+            for block in msg.get_content_blocks("tool_call"):
+                if not (
+                    isinstance(block, ToolCallBlock) and block.name == "Read"
+                ):
+                    continue
+
+                try:
+                    tool_input = _json_loads_with_repair(block.input)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    continue
+
+                file_path = tool_input.get("file_path")
+                if isinstance(file_path, str):
+                    reserved_paths.add(file_path)
+
+        await self.state.tool_context.clean_file_cache(
+            reserved_file_paths=reserved_paths,
+        )
 
     async def _split_tool_result_for_compression(
         self,
