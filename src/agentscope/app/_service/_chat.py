@@ -38,6 +38,7 @@ from ...event import (
     ExternalExecutionResultEvent,
 )
 from ...message import AssistantMsg, Msg, ToolCallState
+from ...permission import AdditionalWorkingDirectory
 
 
 class ChatService:
@@ -217,6 +218,18 @@ class ChatService:
             session_id,
             session_record.config.workspace_id,
         )
+
+        # Add workspace working directory to the permission context
+        if (
+            workspace.workdir
+            not in session_record.state.permission_context.working_directories
+        ):
+            session_record.state.permission_context.working_directories[
+                workspace.workdir
+            ] = AdditionalWorkingDirectory(
+                path=workspace.workdir,
+                source="session",
+            )
 
         # ----------------------------------------------------------------
         # 2. Toolkit (workspace tools + planning + TaskStop + schedule +
