@@ -260,7 +260,7 @@ const ChatPageInner = () => {
 					<SidebarContent className="my-5">
 						<SidebarGroup>
 							<SidebarGroupLabel>{t('chat.session.label')}</SidebarGroupLabel>
-							<SidebarGroupAction>
+							<SidebarGroupAction asChild>
 								<Button
 									id="tour-create-session"
 									size="icon-xs"
