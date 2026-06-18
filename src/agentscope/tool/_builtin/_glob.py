@@ -5,7 +5,7 @@ import os
 import re
 from typing import Any, List
 
-from .._base import ToolBase
+from .._base import ToolBase, ToolMiddlewareBase
 from ...permission import (
     PermissionContext,
     PermissionDecision,
@@ -55,8 +55,17 @@ codebase."""  # ignore: E501
     is_external_tool: bool = False
     is_state_injected: bool = False
 
-    def __init__(self) -> None:
-        """Initialize the glob tool."""
+    def __init__(
+        self,
+        middlewares: List[ToolMiddlewareBase] | None = None,
+    ) -> None:
+        """Initialize the glob tool.
+
+        Args:
+            middlewares (`List[ToolMiddlewareBase] | None`, optional):
+                Tool middlewares wrapping the tool execution.
+        """
+        super().__init__(middlewares=middlewares)
 
     async def check_permissions(
         self,
@@ -263,7 +272,7 @@ codebase."""  # ignore: E501
         self.match_parts(parts, 0, base_dir, results)
         return results
 
-    async def __call__(  # type: ignore[override]
+    async def call(  # type: ignore[override]
         self,
         pattern: str,
         path: str | None = None,
