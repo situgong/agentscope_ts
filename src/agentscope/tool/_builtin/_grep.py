@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """The grep tool in agentscope."""
 import fnmatch
-import os
 from typing import Any, List, Literal
 
 from .._base import ToolBase, ToolMiddlewareBase
@@ -190,7 +189,7 @@ class Grep(ToolBase):
             message="Grep search is read-only.",
         )
 
-    def match_rule(
+    async def match_rule(
         self,
         rule_content: str | None,
         tool_input: dict[str, Any],
@@ -220,10 +219,10 @@ class Grep(ToolBase):
 
         path = tool_input.get("path", "")
         if not path:
-            path = os.getcwd()
+            path = await self._backend.getcwd()
         return fnmatch.fnmatch(path, rule_content)
 
-    def generate_suggestions(
+    async def generate_suggestions(
         self,
         tool_input: dict[str, Any],
     ) -> List[PermissionRule]:
@@ -240,12 +239,13 @@ class Grep(ToolBase):
             `List[PermissionRule]`:
                 A single suggested rule covering the search directory
         """
-        path = tool_input.get("path", "")
-        if not path:
-            path = os.getcwd()
+        backend_cwd = await self._backend.getcwd()
+        path = tool_input.get("path") or backend_cwd
 
-        abs_path = os.path.abspath(path)
-        pattern = abs_path.rstrip("/") + "/**"
+        abs_path = self._backend.abspath(path, cwd=backend_cwd)
+        # Glob patterns are POSIX-style strings (matched by fnmatch),
+        # not real filesystem paths — do NOT use backend.join_path here.
+        pattern = abs_path.rstrip("/\\") + "/**"
 
         return [
             PermissionRule(
@@ -355,7 +355,7 @@ class Grep(ToolBase):
             n: Show line numbers (content mode only, default True)
             **kwargs: Additional parameters (-A, -B, -C)
         """
-        search_path = path or os.getcwd()
+        search_path = path or await self._backend.getcwd()
 
         if head_limit is not None and head_limit < 0:
             return ToolChunk(
