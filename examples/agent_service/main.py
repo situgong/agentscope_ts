@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 """The example script to start the agent service."""
 import os
+import sys
+
+# Windows asyncio needs the ProactorEventLoop to support subprocesses
+# (create_subprocess_exec). The default SelectorEventLoop raises
+# NotImplementedError, which breaks workspace/skill listing and other
+# shell-based operations.
+if sys.platform == "win32":
+    import asyncio
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 import uvicorn
 from fastapi.middleware import Middleware
@@ -160,10 +169,15 @@ so anything you want them to see MUST be sent through `TeamSay`.""",
 
 
 if __name__ == "__main__":
-    # Start the service
+    # Start the service.
+    # NOTE: reload=True forces uvicorn's use_subprocess=True, which on
+    # Windows makes it pick SelectorEventLoop — that loop does NOT support
+    # asyncio.create_subprocess_exec (raises NotImplementedError), breaking
+    # workspace/skill listing and all shell-based tool operations.
+    # Disabling reload lets uvicorn use ProactorEventLoop on Windows.
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=False,
     )
