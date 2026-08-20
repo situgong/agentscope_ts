@@ -32,46 +32,47 @@ from agentscope.permission import (
 
 # Properties that each component type accepts (beyond the common ones).
 # "strict" means unknown keys will be stripped.
+# Common properties (all components): id, accessibility, weight
+# Mirrors the Zod strict-mode schemas in @a2ui/web_core v0_9/basic_catalog.
 _COMPONENT_SCHEMAS: dict[str, set[str]] = {
-    "Text": {"text", "variant", "weight", "accessibility"},
-    "Image": {
-        "url", "description", "fit", "variant", "weight", "accessibility",
-    },
-    "Icon": {"name", "variant", "weight", "accessibility"},
-    "Video": {"url", "description", "weight", "accessibility"},
-    "AudioPlayer": {"url", "description", "weight", "accessibility"},
-    "Row": {"children", "weight", "accessibility"},
-    "Column": {"children", "justify", "align", "weight", "accessibility"},
-    "List": {"children", "weight", "accessibility"},
-    "Card": {"child", "weight", "accessibility"},
-    "Tabs": {"tabs", "weight", "accessibility"},
-    "Divider": {"weight", "accessibility"},
-    "Modal": {"child", "isOpen", "weight", "accessibility"},
+    "Text": {"text", "variant"},
+    "Image": {"url", "description", "fit", "variant"},
+    "Icon": {"name"},
+    "Video": {"url"},
+    "AudioPlayer": {"url", "description"},
+    "Row": {"children", "justify", "align"},
+    "Column": {"children", "justify", "align"},
+    "List": {"children", "direction", "align", "listStyle"},
+    "Card": {"child"},
+    "Tabs": {"tabs"},
+    "Divider": {"axis"},
+    "Modal": {"trigger", "content"},
     "Button": {
-        "child", "action", "variant", "weight", "accessibility",
+        "child", "action", "variant", "checks", "isValid",
+        "validationErrors",
     },
     "TextField": {
-        "label", "value", "placeholder", "isReadOnly", "isDisabled",
-        "checks", "isValid", "validationErrors", "weight", "accessibility",
+        "label", "value", "variant", "validationRegexp", "checks",
+        "isValid", "validationErrors",
     },
     "CheckBox": {
-        "label", "isChecked", "isDisabled", "weight", "accessibility",
+        "label", "value", "checks", "isValid", "validationErrors",
     },
     "ChoicePicker": {
-        "label", "choices", "selectedKey", "isDisabled", "weight",
-        "accessibility",
+        "label", "variant", "options", "value", "displayStyle",
+        "filterable", "checks", "isValid", "validationErrors",
     },
     "Slider": {
         "value", "min", "max", "label", "checks", "isValid",
-        "validationErrors", "weight", "accessibility",
+        "validationErrors",
     },
     "DateTimeInput": {
-        "label", "value", "isReadOnly", "isDisabled", "checks", "isValid",
-        "validationErrors", "weight", "accessibility",
+        "value", "enableDate", "enableTime", "min", "max", "label",
+        "checks", "isValid", "validationErrors",
     },
 }
 
-# Required fields per component type.
+# Required fields per component type (beyond id/component).
 _COMPONENT_REQUIRED: dict[str, set[str]] = {
     "Text": {"text"},
     "Image": {"url"},
@@ -82,19 +83,28 @@ _COMPONENT_REQUIRED: dict[str, set[str]] = {
     "Column": {"children"},
     "List": {"children"},
     "Card": {"child"},
+    "Tabs": {"tabs"},
+    "Modal": {"trigger", "content"},
     "Button": {"child"},
+    "TextField": {"label"},
+    "CheckBox": {"label", "value"},
+    "ChoicePicker": {"options", "value"},
     "Slider": {"value", "max"},
     "DateTimeInput": {"value"},
 }
 
 # Components that reference other component IDs.
+# Maps component type → list of property names that hold ComponentId references.
+# For Tabs, "tabs" is an array of {title, child} — the "child" in each
+# item is a ComponentId reference.
 _REF_FIELDS: dict[str, list[str]] = {
     "Row": ["children"],
     "Column": ["children"],
     "List": ["children"],
     "Card": ["child"],
     "Button": ["child"],
-    "Modal": ["child"],
+    "Modal": ["trigger", "content"],
+    "Tabs": ["tabs"],
 }
 
 
@@ -117,24 +127,64 @@ class A2UI(ToolBase):
       that components reference via ``{path: "/key"}`` bindings.
     - ``deleteSurface``: ``{surfaceId}`` — remove a surface.
 
-    Component property reference:
+    Data binding: any string-type property can be either a literal
+    string or a dynamic binding ``{"path": "/dataKey"}``. The value
+    is resolved from the data model set via ``updateDataModel``.
 
-    - **Text**: ``text`` (string or ``{path: "/key"}``),
+    Actions: interactive components (Button) accept an ``action``
+    property: ``{"event": {"name": "event_name", "context": {}}}``.
+    When the user interacts, the event is sent back to the agent.
+
+    Checks/validation: checkable components (Button, TextField,
+    CheckBox, ChoicePicker, Slider, DateTimeInput) support
+    ``checks`` (array of check definitions), ``isValid`` (bool),
+    and ``validationErrors`` (array of strings).
+
+    Component property reference (all components also accept
+    ``id``, ``accessibility``, ``weight``):
+
+    - **Text**: ``text`` (string or ``{path}``, **required**),
       ``variant`` ("h1"/"h2"/"h3"/"h4"/"h5"/"caption"/"body")
-    - **Button**: ``child`` (component ID for label),
-      ``action`` (``{event: {name, context}}`` — always include
-      so clicks are sent back to the agent),
-      ``variant`` ("default"/"primary"/"borderless")
-    - **Column**: ``children`` (array of component IDs),
-      ``justify``, ``align``
-    - **Row**: ``children`` (array of component IDs)
-    - **Card**: ``child`` (single component ID)
-    - **TextField**: ``label``, ``value`` (or ``{path}``),
-      ``placeholder``
-    - **CheckBox**: ``label``, ``isChecked`` (or ``{path}``)
-    - **Image**: ``url`` (string or ``{path}``), ``description``
-    - **Divider**: no required props
-    - **Slider**: ``value`` (or ``{path}``), ``min``, ``max``
+    - **Button**: ``child`` (component ID, **required**),
+      ``action`` (``{event: {name, context}}`` — include so clicks
+      are sent back to the agent),
+      ``variant`` ("default"/"primary"/"borderless"),
+      ``checks``, ``isValid``, ``validationErrors``
+    - **Column**: ``children`` (array of component IDs,
+      **required**), ``justify``, ``align``
+    - **Row**: ``children`` (array of component IDs,
+      **required**), ``justify``, ``align``
+    - **List**: ``children`` (array of component IDs,
+      **required**), ``direction``, ``align``, ``listStyle``
+    - **Card**: ``child`` (single component ID, **required**)
+    - **Tabs**: ``tabs`` (array of ``{title, child}``,
+      **required** — ``child`` is a component ID reference)
+    - **Modal**: ``trigger`` (component ID, **required**),
+      ``content`` (component ID, **required**)
+    - **TextField**: ``label`` (**required**), ``value``
+      (or ``{path}``), ``variant``, ``validationRegexp``,
+      ``checks``, ``isValid``, ``validationErrors``
+    - **CheckBox**: ``label`` (**required**),
+      ``value`` (DynamicBoolean or ``{path}``, **required**),
+      ``checks``, ``isValid``, ``validationErrors``
+    - **ChoicePicker**: ``options`` (array, **required**),
+      ``value`` (**required**), ``label``, ``variant``,
+      ``displayStyle``, ``filterable``,
+      ``checks``, ``isValid``, ``validationErrors``
+    - **Slider**: ``value`` (or ``{path}``, **required**),
+      ``max`` (**required**), ``min``, ``label``,
+      ``checks``, ``isValid``, ``validationErrors``
+    - **DateTimeInput**: ``value`` (or ``{path}``,
+      **required**), ``enableDate``, ``enableTime``,
+      ``min``, ``max``, ``label``,
+      ``checks``, ``isValid``, ``validationErrors``
+    - **Image**: ``url`` (string or ``{path}``, **required**),
+      ``description``, ``fit``, ``variant``
+    - **Icon**: ``name`` (**required**)
+    - **Video**: ``url`` (string or ``{path}``, **required**)
+    - **AudioPlayer**: ``url`` (string or ``{path}``,
+      **required**), ``description``
+    - **Divider**: ``axis`` ("horizontal"/"vertical")
 
     Example — a simple greeting card::
 
@@ -163,27 +213,17 @@ class A2UI(ToolBase):
     """The tool name presented to the agent."""
 
     # pylint: disable=line-too-long
-    description: str = """Render a rich, interactive UI surface using the A2UI protocol. Call this tool with a list of A2UI v0.9.1 messages to create surfaces, add components, set data, and delete surfaces.
+    description: str = """Render interactive UI surfaces using the A2UI v0.9.1 protocol. Call this tool with a list of JSON messages to create surfaces, add components, set data, and delete surfaces.
 
-Each message is a JSON object with "version": "v0.9.1" and one of:
-- createSurface: {surfaceId, catalogId} — create a new surface (catalogId="basic")
-- updateComponents: {surfaceId, components: [...]} — add/replace components
-- updateDataModel: {surfaceId, path?, value} — set data for path bindings
-- deleteSurface: {surfaceId} — remove a surface
+Read the "a2ui-generation" skill (via the Skill tool) for the full protocol specification, component reference, and examples before calling this tool.
 
-Components use an adjacency-list model: each component has an "id" and references children by id. The ROOT component MUST have id="root". Available component types: Text, Image, Icon, Video, AudioPlayer, Row, Column, List, Card, Tabs, Divider, Modal, Button, TextField, CheckBox, ChoicePicker, Slider, DateTimeInput.
-
-Key component properties:
-- Text: text (plain string or {path: "/key"}), variant ("h1"/"h2"/"h3"/"h4"/"h5"/"caption"/"body")
-- Button: child (component ID for label text), action ({event: {name, context}}), variant ("default"/"primary"/"borderless"). ALWAYS include an "action" with a unique event "name" so button clicks are sent back to you.
-- Column: children (array of component IDs), justify, align
-- Row: children (array of component IDs)
-- Card: child (single component ID)
-- TextField: label, value (or {path}), placeholder
-- CheckBox: label, isChecked (or {path})
-- Image: url (string or {path}), description
-- Divider: no required props
-- Slider: value (or {path}), min, max
+Quick reference:
+- Messages: createSurface {surfaceId, catalogId="basic"}, updateComponents {surfaceId, components}, updateDataModel {surfaceId, value}, deleteSurface {surfaceId}
+- Components use ID references (adjacency-list model). One component MUST have id="root".
+- 18 component types: Text, Image, Icon, Video, AudioPlayer, Row, Column, List, Card, Tabs, Divider, Modal, Button, TextField, CheckBox, ChoicePicker, Slider, DateTimeInput
+- Data binding: {"path": "/key"} resolves from data model set via updateDataModel
+- Actions: Button "action": {"event": {"name": "event_name", "context": {}}} — clicks sent back to you
+- Validation: "checks" array on input components and buttons
 
 Example:
   messages=[{"version":"v0.9.1","createSurface":{"surfaceId":"s1","catalogId":"basic"}},{"version":"v0.9.1","updateComponents":{"surfaceId":"s1","components":[{"component":"Column","id":"root","children":["t1","b1"]},{"component":"Text","id":"t1","text":"Hello A2UI!"},{"component":"Button","id":"b1","child":"btn-label","action":{"event":{"name":"click_me","context":{}}}},{"component":"Text","id":"btn-label","text":"Click Me"}]}}]
@@ -482,13 +522,71 @@ Example:
                                 f"'{req}'."
                             )
 
-                    # Strip unknown keys (strict mode)
-                    allowed = _COMPONENT_SCHEMAS[comp_type]
-                    unknown = set(comp.keys()) - allowed - {
-                        "component", "id",
+                    # Strip unknown keys (strict mode).
+                    # Common properties allowed on ALL components:
+                    # id, component, weight, accessibility.
+                    allowed = _COMPONENT_SCHEMAS[comp_type] | {
+                        "component", "id", "weight", "accessibility",
                     }
+                    unknown = set(comp.keys()) - allowed
                     for uk in unknown:
                         del comp[uk]
+
+                    # Validate checks format: each check must have
+                    # "condition" (a function call) and "message".
+                    # Auto-fix the common mistake of putting call/args
+                    # directly in the check object.
+                    if "checks" in comp and isinstance(
+                        comp["checks"], list
+                    ):
+                        for ci_check, check in enumerate(
+                            comp["checks"]
+                        ):
+                            if not isinstance(check, dict):
+                                continue
+                            # Auto-fix: if check has "call" but no
+                            # "condition", wrap it.
+                            if "call" in check and "condition" not in check:
+                                call_val = check.pop("call")
+                                args_val = check.pop("args", {})
+                                return_type = check.pop(
+                                    "returnType", "boolean"
+                                )
+                                check["condition"] = {
+                                    "call": call_val,
+                                    "args": args_val,
+                                    "returnType": return_type,
+                                }
+                            # Auto-fix: if condition exists but is
+                            # missing returnType, add it (Zod schema
+                            # requires returnType:"boolean" for
+                            # DynamicBoolean function calls).
+                            cond = check.get("condition")
+                            if isinstance(cond, dict) and "call" in cond:
+                                if "returnType" not in cond:
+                                    cond["returnType"] = "boolean"
+                                # Also fix nested function calls in
+                                # args values (e.g. "and"/"or" with
+                                # nested "required" calls).
+                                args = cond.get("args", {})
+                                if isinstance(args, dict):
+                                    for v in args.values():
+                                        if (
+                                            isinstance(v, dict)
+                                            and "call" in v
+                                            and "returnType" not in v
+                                        ):
+                                            v["returnType"] = "boolean"
+                            # Validate: condition is required
+                            if "condition" not in check:
+                                errors.append(
+                                    f"Message {msg_idx}, component "
+                                    f"'{comp_id}' ({comp_type}): "
+                                    f"checks[{ci_check}] missing "
+                                    f"'condition'. Each check must "
+                                    f"have 'condition' (a function "
+                                    f"call) and 'message'."
+                                )
 
                 if comps and not has_root:
                     errors.append(
@@ -536,8 +634,9 @@ Example:
         for sid, comp_map in surface_components.items():
             for comp_id, comp_type in comp_map.items():
                 ref_fields = _REF_FIELDS.get(comp_type, [])
-                # We need the original component dict to check refs
-                # — re-scan messages for this.
+                if not ref_fields:
+                    continue
+                # Re-scan messages to find the component dict
                 for msg in messages:
                     uc = msg.get("updateComponents")
                     if not isinstance(uc, dict):
@@ -552,12 +651,41 @@ Example:
                         for field in ref_fields:
                             if field not in comp:
                                 continue
-                            refs = comp[field]
+                            val = comp[field]
+                            # Tabs: "tabs" is an array of
+                            # {title, child} where child is a
+                            # ComponentId reference.
+                            if comp_type == "Tabs":
+                                if not isinstance(val, list):
+                                    continue
+                                for tab_item in val:
+                                    if not isinstance(tab_item, dict):
+                                        continue
+                                    ref = tab_item.get("child")
+                                    if (
+                                        isinstance(ref, str)
+                                        and ref not in comp_map
+                                    ):
+                                        errors.append(
+                                            f"Component '{comp_id}' "
+                                            f"(Tabs) references "
+                                            f"'{ref}' in tabs[].child, "
+                                            f"but no component with "
+                                            f"id='{ref}' exists in "
+                                            f"surface '{sid}'."
+                                        )
+                                continue
+                            # Other ref fields: string or list of
+                            # strings
+                            refs = val
                             if isinstance(refs, str):
                                 refs = [refs]
                             if isinstance(refs, list):
                                 for ref in refs:
-                                    if ref not in comp_map:
+                                    if (
+                                        isinstance(ref, str)
+                                        and ref not in comp_map
+                                    ):
                                         errors.append(
                                             f"Component '{comp_id}' "
                                             f"({comp_type}) references "

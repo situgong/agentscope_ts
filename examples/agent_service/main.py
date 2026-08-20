@@ -109,6 +109,16 @@ app = create_app(
         ),
         # The default MCP servers that will be added into the workspace
         default_mcps=default_mcps,
+        # Seed the A2UI generation skill into every new workspace so the
+        # agent can read the full protocol spec on demand via the Skill
+        # tool, keeping the system prompt compact.
+        skill_paths=[
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "skills",
+                "a2ui-generation",
+            ),
+        ],
     ),
     # Knowledge base feature — backed by an in-memory Qdrant store. The
     # CollectionPerKbManager allocates one collection per knowledge base,

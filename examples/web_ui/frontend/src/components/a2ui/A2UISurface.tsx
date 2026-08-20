@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { MessageProcessor } from '@a2ui/web_core/v0_9';
 import { A2uiSurface, basicCatalog } from '@a2ui/react/v0_9';
 import type { SurfaceModel } from '@a2ui/web_core/v0_9';
@@ -34,10 +34,6 @@ export function A2UISurface({ rawA2UI }: A2UISurfaceProps) {
 		// the full URL as its ID, but agents commonly send "basic".
 		const BASIC_CATALOG_ID =
 			'https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json';
-		// Properties that the A2UI v0.9 Slider schema rejects (strict mode).
-		// Agents commonly include "step", which causes a validation error
-		// that prevents the entire surface from rendering.
-		const SLIDER_UNSUPPORTED_KEYS = ['step'];
 		for (const msg of parsed) {
 			if (typeof msg !== 'object' || msg === null) continue;
 			const m = msg as Record<string, unknown>;
@@ -51,26 +47,6 @@ export function A2UISurface({ rawA2UI }: A2UISurfaceProps) {
 					cs.catalogId = BASIC_CATALOG_ID;
 				}
 			}
-			// Strip unsupported keys from Slider components to prevent
-			// strict-mode validation errors.
-			if (
-				'updateComponents' in m &&
-				typeof m.updateComponents === 'object' &&
-				m.updateComponents !== null
-			) {
-				const uc = m.updateComponents as Record<string, unknown>;
-				if (Array.isArray(uc.components)) {
-					for (const comp of uc.components) {
-						if (typeof comp !== 'object' || comp === null) continue;
-						const c = comp as Record<string, unknown>;
-						if (c.component === 'Slider') {
-							for (const key of SLIDER_UNSUPPORTED_KEYS) {
-								delete c[key];
-							}
-						}
-					}
-				}
-			}
 		}
 		return parsed;
 	}, [rawA2UI]);
@@ -80,18 +56,14 @@ export function A2UISurface({ rawA2UI }: A2UISurfaceProps) {
 	const [surfaces, setSurfaces] = useState<
 		SurfaceModel<ReactComponentImplementation>[]
 	>([]);
-	// Track whether we've already sent a render error for this message
-	// set, to avoid spamming the agent on re-renders.
-	const errorReportedRef = useRef<string | null>(null);
+	const [renderError, setRenderError] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (messages.length === 0) {
 			setSurfaces([]);
+			setRenderError(null);
 			return;
 		}
-
-		// Reset error tracking when messages change
-		errorReportedRef.current = null;
 
 		const processor = new MessageProcessor<ReactComponentImplementation>(
 			[basicCatalog],
@@ -125,22 +97,16 @@ export function A2UISurface({ rawA2UI }: A2UISurfaceProps) {
 
 		try {
 			processor.processMessages(messages as never);
+			setRenderError(null);
 		} catch (err) {
 			console.error('A2UI processing error:', err);
-			// Send the render error back to the agent so it can
-			// self-correct and retry with fixed messages.
-			// Only send once per message set to avoid spamming.
+			// Display the error inline. Do NOT send it back to the
+			// agent via chatAction.send() — that creates an infinite
+			// loop: error → new agent run → same A2UI → same error.
+			// The backend a2ui_tool.py validation is the proper
+			// retry mechanism (bounded by max agent turns).
 			const errMsg = err instanceof Error ? err.message : String(err);
-			if (chatAction && errorReportedRef.current !== errMsg) {
-				errorReportedRef.current = errMsg;
-				chatAction.send([{
-					id: crypto.randomUUID(),
-					type: 'text',
-					text: `[A2UI Render Error] The surface failed to render: ${errMsg}. Please fix the issue and call the A2UI tool again with corrected messages.`,
-					created_at: new Date().toISOString(),
-					finished_at: new Date().toISOString(),
-				}]);
-			}
+			setRenderError(errMsg);
 		}
 
 		return () => {
@@ -149,7 +115,7 @@ export function A2UISurface({ rawA2UI }: A2UISurfaceProps) {
 		};
 	}, [messages, chatAction]);
 
-	if (surfaces.length === 0) return null;
+	if (surfaces.length === 0 && !renderError) return null;
 
 	return (
 		<Card className="w-full border-primary/20">
@@ -170,6 +136,12 @@ export function A2UISurface({ rawA2UI }: A2UISurfaceProps) {
 			</CardHeader>
 			{!collapsed && (
 				<CardContent className="space-y-4">
+					{renderError && (
+						<div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+							<span className="font-semibold">A2UI Render Error: </span>
+							{renderError}
+						</div>
+					)}
 					{surfaces.map((surface) => (
 						<div key={surface.id} className="a2ui-surface">
 							<A2uiSurface surface={surface} />
