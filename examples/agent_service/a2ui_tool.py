@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """The A2UI tool that lets agents emit declarative UI surfaces.
 
+This is an example custom tool that extends AgentScope. It is
+registered via ``create_app(extra_agent_tools=...)`` in ``main.py``.
+
 Agents call this tool with A2UI v0.9.1 messages (createSurface,
 updateComponents, updateDataModel, deleteSurface). The tool encodes
 the messages as JSON Lines in a ``DataBlock`` with
@@ -12,10 +15,10 @@ import base64
 import json
 from typing import Any, List
 
-from .._base import ToolBase, ToolMiddlewareBase
-from .._response import ToolChunk
-from ...message import DataBlock, Base64Source, TextBlock, ToolResultState
-from ...permission import (
+from agentscope.tool import ToolBase, ToolMiddlewareBase
+from agentscope.tool._response import ToolChunk
+from agentscope.message import DataBlock, Base64Source, TextBlock, ToolResultState
+from agentscope.permission import (
     PermissionContext,
     PermissionDecision,
     PermissionBehavior,
