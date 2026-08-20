@@ -112,10 +112,18 @@ class PipelineStepResult(BaseModel):
     agent_id: str = Field(..., description="The agent ID.")
     agent_name: str = Field(..., description="The agent name.")
     instruction: str = Field(..., description="The instruction that was given.")
-    reply: Msg = Field(..., description="The agent's reply message.")
+    reply: Msg = Field(..., description="The agent's initial reply message.")
     sub_results: list["PipelineStepResult"] = Field(
         default_factory=list,
         description="Results from sub-steps, if any.",
+    )
+    final_reply: Msg | None = Field(
+        default=None,
+        description=(
+            "The agent's final reply after processing sub-step outputs. "
+            "Only set when the step has sub-steps; the agent is re-run "
+            "with the sub-step outputs to produce a consolidated result."
+        ),
     )
 
 
@@ -275,6 +283,25 @@ async def run_pipeline(
             )
             current_reply = sub_reply
 
+        # If there were sub-steps, re-run the parent agent with the
+        # sub-step outputs so it can consolidate them into a final reply.
+        final_reply: Msg | None = None
+        if sub_results:
+            sub_outputs = "\n\n".join(
+                f"Sub-step {sub_idx + 1} ({sr.agent_name}) output:\n"
+                f"{sr.reply.get_text_content() or ''}"
+                for sub_idx, sr in enumerate(sub_results)
+            )
+            final_instruction = (
+                f"Your initial output:\n{reply.get_text_content() or ''}\n\n"
+                f"Sub-step outputs:\n{sub_outputs}\n\n"
+                f"Please consolidate the above into a final response "
+                f"based on your original instruction:\n{step.instruction}"
+            )
+            final_inputs = UserMsg(name="pipeline", content=final_instruction)
+            final_reply = await agent.reply(final_inputs)
+            current_reply = final_reply
+
         results.append(
             PipelineStepResult(
                 step_index=idx,
@@ -283,11 +310,12 @@ async def run_pipeline(
                 instruction=step.instruction,
                 reply=reply,
                 sub_results=sub_results,
+                final_reply=final_reply,
             ),
         )
 
-        # The last sub-step's output (or the parent's if no sub-steps)
-        # becomes the input for the next parent step.
+        # The final reply (or initial reply if no sub-steps) becomes
+        # the input for the next parent step.
         prev_reply = current_reply
 
     return RunPipelineResponse(results=results)
@@ -327,6 +355,9 @@ async def run_pipeline_stream(
       step completes, includes the agent's reply.
     - ``{"type": "sub_step_done", "step_index": N, "sub_step_index": M, ...}``
       — after a sub-step completes.
+    - ``{"type": "step_final", "step_index": N, ...}`` — after the parent
+      agent re-runs with sub-step outputs to produce a consolidated reply.
+      Only emitted when the step has sub-steps.
     - ``{"type": "pipeline_done", "total_steps": N}`` — all steps done.
     - ``{"type": "error", "message": "..."}`` — on failure.
 
@@ -383,7 +414,17 @@ async def run_pipeline_stream(
             else:
                 inputs = UserMsg(name="pipeline", content=step.instruction)
 
-            reply = await agent.reply(inputs)
+            try:
+                reply = await agent.reply(inputs)
+            except Exception as exc:
+                yield _sse(
+                    {
+                        "type": "error",
+                        "step_index": idx,
+                        "message": str(exc),
+                    },
+                )
+                return
 
             reply_data = reply.model_dump(mode="json")
             yield _sse(
@@ -399,6 +440,7 @@ async def run_pipeline_stream(
 
             # Execute sub-steps
             current_reply = reply
+            sub_replies: list[Msg] = []
             for sub_idx, sub_step in enumerate(step.sub_steps):
                 try:
                     sub_agent = await _assemble_agent(
@@ -424,7 +466,18 @@ async def run_pipeline_stream(
                     f"Your instruction:\n{sub_step.instruction}"
                 )
                 sub_inputs = UserMsg(name="pipeline", content=sub_combined)
-                sub_reply = await sub_agent.reply(sub_inputs)
+                try:
+                    sub_reply = await sub_agent.reply(sub_inputs)
+                except Exception as exc:
+                    yield _sse(
+                        {
+                            "type": "error",
+                            "step_index": idx,
+                            "sub_step_index": sub_idx,
+                            "message": str(exc),
+                        },
+                    )
+                    return
 
                 yield _sse(
                     {
@@ -438,6 +491,45 @@ async def run_pipeline_stream(
                     },
                 )
                 current_reply = sub_reply
+                sub_replies.append(sub_reply)
+
+            # If there were sub-steps, re-run the parent agent with the
+            # sub-step outputs so it can consolidate them into a final reply.
+            if step.sub_steps:
+                sub_outputs = "\n\n".join(
+                    f"Sub-step {sub_idx + 1} output:\n"
+                    f"{sr.get_text_content() or ''}"
+                    for sub_idx, sr in enumerate(sub_replies)
+                )
+                final_instruction = (
+                    f"Your initial output:\n{reply.get_text_content() or ''}\n\n"
+                    f"Sub-step outputs:\n{sub_outputs}\n\n"
+                    f"Please consolidate the above into a final response "
+                    f"based on your original instruction:\n{step.instruction}"
+                )
+                final_inputs = UserMsg(name="pipeline", content=final_instruction)
+                try:
+                    final_reply = await agent.reply(final_inputs)
+                except Exception as exc:
+                    yield _sse(
+                        {
+                            "type": "error",
+                            "step_index": idx,
+                            "message": str(exc),
+                        },
+                    )
+                    return
+
+                yield _sse(
+                    {
+                        "type": "step_final",
+                        "step_index": idx,
+                        "agent_id": step.agent_id,
+                        "agent_name": agent.name,
+                        "reply": final_reply.model_dump(mode="json"),
+                    },
+                )
+                current_reply = final_reply
 
             prev_reply = current_reply
 

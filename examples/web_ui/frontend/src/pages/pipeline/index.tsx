@@ -156,16 +156,32 @@ export function PipelinePage() {
 					const next = [...prev];
 					const parent = next[evt.step_index];
 					if (parent) {
-						parent.sub_results = [
-							...(parent.sub_results || []),
-							{
-								step_index: evt.sub_step_index,
-								agent_id: evt.agent_id,
-								agent_name: evt.agent_name,
-								instruction: evt.instruction,
-								reply: evt.reply,
-							},
-						];
+						next[evt.step_index] = {
+							...parent,
+							sub_results: [
+								...(parent.sub_results || []),
+								{
+									step_index: evt.sub_step_index,
+									agent_id: evt.agent_id,
+									agent_name: evt.agent_name,
+									instruction: evt.instruction,
+									reply: evt.reply,
+								},
+							],
+						};
+					}
+					return next;
+				});
+				break;
+			case 'step_final':
+				setResults((prev) => {
+					const next = [...prev];
+					const parent = next[evt.step_index];
+					if (parent) {
+						next[evt.step_index] = {
+							...parent,
+							final_reply: evt.reply as Record<string, unknown>,
+						};
 					}
 					return next;
 				});
@@ -443,6 +459,17 @@ export function PipelinePage() {
 													</div>
 												</div>
 											))}
+										</div>
+									)}
+									{/* Final reply (after sub-step synthesis) */}
+									{r.final_reply && (
+										<div className="space-y-2 border-t pt-3">
+											<span className="text-sm font-medium text-primary">
+												Final Reply (consolidated)
+											</span>
+											<div className="text-sm whitespace-pre-wrap bg-primary/5 rounded p-3 border border-primary/20">
+												{extractText(r.final_reply as Record<string, unknown>)}
+											</div>
 										</div>
 									)}
 								</div>
