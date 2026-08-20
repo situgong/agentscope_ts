@@ -1,5 +1,6 @@
 name: GLM-4_5V
 label: GLM-4.5V
+api_type: chat_completions
 status: active
 
 input_types:

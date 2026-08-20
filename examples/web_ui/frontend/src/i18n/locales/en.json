@@ -373,7 +373,20 @@
 			"outputSizePlaceholder": "e.g. 32768",
 			"cancel": "Cancel",
 			"submit": "Add model"
-		}
+		},
+		"customCredentials": "Custom Credentials",
+		"noCustomCredentials": "No custom credentials"
+	},
+	"dialog-custom-credential-create": {
+		"title": "Add Custom Credential",
+		"description": "Create a custom credential with your own base URL and API key. Pre-configured models matching the API type will be available.",
+		"apiType": "API type",
+		"name": "Credential name",
+		"namePlaceholder": "e.g. My GLM Endpoint",
+		"baseUrl": "Base URL",
+		"baseUrlPlaceholder": "https://api.example.com/v1",
+		"apiKey": "API key",
+		"apiKeyPlaceholder": "sk-..."
 	},
 	"knowledge": {
 		"subtitle": "Manage knowledge bases used by your agents",

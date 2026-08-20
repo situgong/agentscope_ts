@@ -14,3 +14,4 @@ export { channelApi } from './channel';
 export { healthApi } from './health';
 export { pipelineApi } from './pipeline';
 export { customModelApi } from './customModel';
+export { customCredentialApi } from './customCredential';

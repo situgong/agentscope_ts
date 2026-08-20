@@ -1,5 +1,6 @@
 name: DeepSeek-V4-Flash
 label: DeepSeek-V4-Flash
+api_type: chat_completions
 status: active
 
 input_types:

@@ -1,5 +1,6 @@
 name: MiniMax-M2
 label: MiniMax-M2
+api_type: chat_completions
 status: active
 
 input_types:

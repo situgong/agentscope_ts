@@ -53,12 +53,13 @@ def _load_yaml_models() -> list[dict[str, Any]]:
     """Load model definitions from YAML files in the ``models/`` directory.
 
     These are pre-configured model cards shipped with the example
-    service (e.g. GLM-5, DeepSeek-V4-Flash). They are merged with
-    user-added custom models in :func:`list_custom_models`.
+    service (e.g. GLM-5, DeepSeek-V4-Flash). Each YAML file may
+    include an ``api_type`` field that associates it with a custom
+    credential's API format.
 
     Returns:
         A list of model info dicts in the same shape as
-        :class:`CustomModelInfo`.
+        :class:`CustomModelInfo`, plus an ``api_type`` key.
     """
     if not os.path.isdir(_YAML_MODELS_DIR):
         return []
@@ -86,11 +87,62 @@ def _load_yaml_models() -> list[dict[str, Any]]:
                     ),
                     "context_size": config.get("context_size"),
                     "output_size": config.get("output_size"),
+                    "api_type": config.get("api_type"),
                 }
             )
         except (yaml.YAMLError, OSError, KeyError):
             continue
     return models
+
+
+def _load_yaml_models_for_api_type(
+    api_type: str | None,
+) -> list[dict[str, Any]]:
+    """Load YAML models filtered by API type.
+
+    Args:
+        api_type: The API type to filter by (e.g.
+            ``"chat_completions"``, ``"responses"``, ``"messages"``).
+            If ``None``, returns an empty list.
+
+    Returns:
+        A list of model info dicts (without the ``api_type`` key).
+    """
+    if not api_type:
+        return []
+    all_yaml = _load_yaml_models()
+    return [
+        {k: v for k, v in m.items() if k != "api_type"}
+        for m in all_yaml
+        if m.get("api_type") == api_type
+    ]
+
+
+def _get_credential_api_type(credential_id: str) -> str | None:
+    """Look up the API type for a custom credential.
+
+    Reads from ``custom_credentials.json`` to find the api_type
+    associated with the given credential ID.
+
+    Args:
+        credential_id: The credential ID to look up.
+
+    Returns:
+        The API type string, or ``None`` if the credential is not
+        a custom credential or has no api_type set.
+    """
+    cc_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "custom_credentials.json",
+    )
+    if not os.path.exists(cc_path):
+        return None
+    try:
+        with open(cc_path, "r", encoding="utf-8") as f:
+            store = json.load(f)
+        return store.get(credential_id, {}).get("api_type")
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def _load_store() -> dict[str, list[dict[str, Any]]]:
@@ -345,11 +397,12 @@ async def list_custom_models(
 
     store = _migrate_legacy(_load_store())
     raw = store.get(credential_id, [])
-    # Merge pre-configured YAML models with user-added custom models.
-    # YAML models are shared across all credentials; user-added models
-    # are per-credential. Duplicates (by name) are deduplicated, with
-    # user-added models taking precedence.
-    yaml_models = _load_yaml_models()
+    # Merge pre-configured YAML models for this credential's api_type
+    # with user-added custom models. YAML models are only attached to
+    # custom credentials that have a matching api_type.
+    # User-added models take precedence on name conflicts.
+    api_type = _get_credential_api_type(credential_id)
+    yaml_models = _load_yaml_models_for_api_type(api_type)
     yaml_names = {m["name"] for m in raw}
     merged = list(raw) + [
         m for m in yaml_models if m["name"] not in yaml_names

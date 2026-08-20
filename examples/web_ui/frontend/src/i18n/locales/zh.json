@@ -373,7 +373,20 @@
 			"outputSizePlaceholder": "例如：32768",
 			"cancel": "取消",
 			"submit": "添加模型"
-		}
+		},
+		"customCredentials": "自定义凭证",
+		"noCustomCredentials": "暂无自定义凭证"
+	},
+	"dialog-custom-credential-create": {
+		"title": "添加自定义凭证",
+		"description": "使用自定义 Base URL 和 API Key 创建凭证。匹配该 API 类型的预配置模型将自动可用。",
+		"apiType": "API 类型",
+		"name": "凭证名称",
+		"namePlaceholder": "例如：我的 GLM 端点",
+		"baseUrl": "Base URL",
+		"baseUrlPlaceholder": "https://api.example.com/v1",
+		"apiKey": "API Key",
+		"apiKeyPlaceholder": "sk-..."
 	},
 	"knowledge": {
 		"subtitle": "管理智能体使用的知识库",
