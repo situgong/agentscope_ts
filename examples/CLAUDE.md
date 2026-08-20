@@ -111,7 +111,51 @@ The `agent_service/pipeline_router.py` implements a multi-step agent pipeline:
 - Backend logs appear in the terminal running `python main.py`
 - Use the browser DevTools Network tab to inspect SSE streams
 
-## Git Conventions
+## Git Workflow
+
+This repo is a fork of [agentscope-ai/agentscope](https://github.com/agentscope-ai/agentscope). We use a two-branch workflow to keep example customizations independent from framework updates.
+
+### Branch Strategy
+
+| Branch | Purpose | Rule |
+|--------|---------|------|
+| `main` | Tracks upstream framework | Never commit directly. Only `git pull upstream main` |
+| `my-examples` | All custom work | Only modify files under `examples/`. Never touch `src/agentscope/` |
+
+### Remotes
+
+- `origin` → `git@github.com:situgong/agentscope_ts.git` (your fork)
+- `upstream` → `https://github.com/agentscope-ai/agentscope.git` (original framework)
+
+### Daily Workflow
+
+```bash
+# 1. Work on my-examples — make changes only in examples/
+git checkout my-examples
+# ... edit files in examples/ ...
+git commit -m "feat(pipeline): add new step type"
+
+# 2. When upstream framework updates, sync:
+git checkout main
+git fetch upstream
+git merge upstream/main          # or: git rebase upstream/main
+git push origin main             # push synced main to your fork
+
+# 3. Merge upstream updates into your examples branch
+git checkout my-examples
+git merge main                   # bring framework updates into your branch
+# Resolve conflicts if any (should be rare — examples/ and src/ don't overlap)
+git push origin my-examples
+```
+
+### Key Principle
+
+**All customizations live in `examples/` only.** The framework source (`src/agentscope/`) stays identical to upstream. This means:
+- Upstream merges are conflict-free (different directories)
+- You can always update the framework without breaking your examples
+- Your examples are portable — they work with any version of the framework that has the same extension points
+
+### Git Conventions
 
 - Follow Conventional Commits: `feat(scope): description`, `fix(scope): description`
 - Common scopes: `pipeline`, `web_ui`, `agent_service`, `rag`, `memory`
