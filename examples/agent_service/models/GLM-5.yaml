@@ -1,5 +1,6 @@
 name: GLM-5
 label: GLM-5
+api_type: chat_completions
 status: active
 
 input_types:

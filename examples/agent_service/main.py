@@ -198,6 +198,12 @@ from custom_model_router import custom_model_router
 
 app.include_router(custom_model_router)
 
+# Register the custom credential router — lets users create/list/delete
+# custom credentials with a user-defined name, API base URL, and API key.
+from custom_credential_router import custom_credential_router
+
+app.include_router(custom_credential_router)
+
 
 if __name__ == "__main__":
     # Start the service.

@@ -435,6 +435,30 @@ export interface CredentialListResponse {
 	total: number;
 }
 
+// ─── Custom Credential ────────────────────────────────────────────────────────
+
+export interface CustomCredentialInfo {
+	credential_id: string;
+	name: string;
+	base_url: string;
+	api_type: string;
+}
+
+export interface ListCustomCredentialsResponse {
+	credentials: CustomCredentialInfo[];
+}
+
+export interface CreateCustomCredentialRequest {
+	name: string;
+	base_url: string;
+	api_key: string;
+	api_type: string;
+}
+
+export interface CreateCustomCredentialResponse {
+	credential_id: string;
+}
+
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 
 export type { Msg, ContentBlock } from '@agentscope-ai/agentscope/message';

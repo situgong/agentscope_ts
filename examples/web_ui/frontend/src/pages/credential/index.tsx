@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 import {
 	credentialApi,
+	customCredentialApi,
 	customModelApi,
 	embeddingModelApi,
 	modelApi,
@@ -11,12 +12,14 @@ import {
 import type {
 	CredentialView,
 	CredentialSchema,
+	CustomCredentialInfo,
 	CustomModelCard,
 	EmbeddingModelCard,
 	ModelCard,
 	TTSModelCard,
 } from '@/api';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
+import { CreateCustomCredentialDialog } from '@/components/dialog/CreateCustomCredentialDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditCredentialDialog } from '@/components/dialog/EditCredentialDialog';
 import { Badge } from '@/components/ui/badge';
@@ -811,11 +814,12 @@ function ModelTable({ models, variant, credentialId }: ModelTableProps) {
 interface DetailPanelProps {
 	credential: CredentialView;
 	schema: CredentialSchema | null;
+	isCustom: boolean;
 	onEdit: () => void;
 	onDelete: () => void;
 }
 
-function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps) {
+function DetailPanel({ credential, schema, isCustom, onEdit, onDelete }: DetailPanelProps) {
 	const { t } = useTranslation();
 	const [models, setModels] = useState<ModelCard[]>([]);
 	const [ttsModels, setTtsModels] = useState<TTSModelCard[]>([]);
@@ -837,11 +841,28 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 
 	// A credential switch can land on a provider with no TTS models at
 	// all, which would leave the tab pointing at an empty list.
-	useEffect(() => setTab('llm'), [credential.id]);
+	// Custom credentials default to the "custom" tab.
+	useEffect(() => setTab(isCustom ? 'custom' : 'llm'), [credential.id, isCustom]);
 
 	useEffect(() => {
 		if (!type) return;
 		setModelsLoading(true);
+
+		// Custom credentials only show their own YAML/user-added models —
+		// not the built-in models of the underlying credential type.
+		if (isCustom) {
+			customModelApi
+				.list(credential.id)
+				.then((res) => {
+					setModels([]);
+					setTtsModels([]);
+					setEmbeddingModels([]);
+					setCustomModels(res.models);
+				})
+				.finally(() => setModelsLoading(false));
+			return;
+		}
+
 		Promise.all([
 			modelApi
 				.list(type)
@@ -867,7 +888,7 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 				setCustomModels(custom);
 			})
 			.finally(() => setModelsLoading(false));
-	}, [credential.id, type]);
+	}, [credential.id, type, isCustom]);
 
 	const handleAddCustomModel = useCallback(
 		async (model: {
@@ -1035,15 +1056,17 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 									</span>
 								</TabsTrigger>
 							)}
-							<TabsTrigger
-								value="custom"
-								className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
-							>
-								{t('credential.custom')}
-								<span className="font-mono text-[10px] text-text-data">
-									{customModels.length}
-								</span>
-							</TabsTrigger>
+							{isCustom && (
+								<TabsTrigger
+									value="custom"
+									className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
+								>
+									{t('credential.custom')}
+									<span className="font-mono text-[10px] text-text-data">
+										{customModels.length}
+									</span>
+								</TabsTrigger>
+							)}
 						</TabsList>
 					</div>
 
@@ -1102,8 +1125,10 @@ export const CredentialPage = () => {
 	const { t } = useTranslation();
 	const { credentials, loading, remove, refetch } = useCredentials();
 	const [schemas, setSchemas] = useState<CredentialSchema[]>([]);
+	const [customCreds, setCustomCreds] = useState<CustomCredentialInfo[]>([]);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [createOpen, setCreateOpen] = useState(false);
+	const [createCustomOpen, setCreateCustomOpen] = useState(false);
 	const [createDefaultType, setCreateDefaultType] = useState<string | undefined>();
 	const [editOpen, setEditOpen] = useState(false);
 	const [deleteOpen, setDeleteOpen] = useState(false);
@@ -1111,6 +1136,14 @@ export const CredentialPage = () => {
 	useEffect(() => {
 		credentialApi.schemas().then((res) => setSchemas(res.schemas));
 	}, []);
+
+	// Load custom credentials
+	const refetchCustomCreds = useCallback(() => {
+		customCredentialApi.list().then((res) => setCustomCreds(res.credentials));
+	}, []);
+	useEffect(() => {
+		refetchCustomCreds();
+	}, [refetchCustomCreds]);
 
 	// Auto-select first credential
 	useEffect(() => {
@@ -1120,6 +1153,7 @@ export const CredentialPage = () => {
 	}, [credentials, selectedId]);
 
 	const selectedCredential = credentials.find((c) => c.id === selectedId) ?? null;
+	const isCustomCredential = customCreds.some((c) => c.credential_id === selectedId);
 	const selectedSchema = selectedCredential
 		? (schemas.find(
 				(s) =>
@@ -1128,14 +1162,21 @@ export const CredentialPage = () => {
 			) ?? null)
 		: null;
 
-	// Group credentials by type, then list all schema types (even empty ones)
+	// IDs of custom credentials — these must NOT appear under standard
+	// provider groups (e.g. "OpenAI API") in the sidebar.
+	const customCredIds = new Set(customCreds.map((c) => c.credential_id));
+
+	// Group credentials by type, then list all schema types (even empty ones).
+	// Custom credentials are excluded — they have their own section.
 	const groupedByType: Array<{ type: string; title: string; records: CredentialView[] }> =
 		schemas.map((s) => {
 			const type = s.properties.type?.const as string;
 			return {
 				type,
 				title: s.title,
-				records: credentials.filter((c) => c.data.type === type),
+				records: credentials.filter(
+					(c) => c.data.type === type && !customCredIds.has(c.id),
+				),
 			};
 		});
 
@@ -1239,6 +1280,44 @@ export const CredentialPage = () => {
 								</SidebarGroup>
 							)}
 
+							{/* Custom credentials section */}
+							<SidebarGroup className="mt-5 px-2 py-0">
+								<SidebarGroupLabel className="justify-between">
+									<span>{t('credential.customCredentials')}</span>
+									<button
+										type="button"
+										onClick={() => setCreateCustomOpen(true)}
+										className="text-muted-foreground hover:text-foreground transition-colors"
+									>
+										<Plus className="size-3.5" />
+									</button>
+								</SidebarGroupLabel>
+								<SidebarGroupContent>
+									<SidebarMenu>
+										{customCreds.length === 0 ? (
+											<li className="px-2 py-1 text-[11px] text-muted-foreground">
+												{t('credential.noCustomCredentials')}
+											</li>
+										) : (
+											customCreds.map((cc) => (
+												<SidebarMenuItem key={cc.credential_id}>
+													<SidebarMenuButton
+														isActive={selectedId === cc.credential_id}
+														onClick={() =>
+															setSelectedId(cc.credential_id)
+														}
+													>
+														<span className="min-w-0 flex-1 truncate">
+															{cc.name}
+														</span>
+													</SidebarMenuButton>
+												</SidebarMenuItem>
+											))
+										)}
+									</SidebarMenu>
+								</SidebarGroupContent>
+							</SidebarGroup>
+
 							{/* Add credential — every provider is an entry point (including
 							    configured ones, to add more under the same provider). */}
 							<SidebarGroup className="mt-5 px-2 py-0">
@@ -1271,6 +1350,7 @@ export const CredentialPage = () => {
 					<DetailPanel
 						credential={selectedCredential}
 						schema={selectedSchema}
+						isCustom={isCustomCredential}
 						onEdit={() => setEditOpen(true)}
 						onDelete={() => setDeleteOpen(true)}
 					/>
@@ -1317,6 +1397,15 @@ export const CredentialPage = () => {
 					/>
 				</>
 			)}
+
+			<CreateCustomCredentialDialog
+				open={createCustomOpen}
+				onOpenChange={setCreateCustomOpen}
+				onCreated={() => {
+					refetchCustomCreds();
+					refetch();
+				}}
+			/>
 		</div>
 	);
 };
