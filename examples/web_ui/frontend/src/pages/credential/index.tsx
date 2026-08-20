@@ -1,10 +1,17 @@
-import { Eye, EyeOff, Plus, Trash2, Pen } from 'lucide-react';
+import { Eye, EyeOff, Plus, Trash2, Pen, Zap, CheckCircle2, XCircle, Loader2, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 
-import { credentialApi, embeddingModelApi, modelApi, ttsModelApi } from '@/api';
+import {
+	credentialApi,
+	customModelApi,
+	embeddingModelApi,
+	modelApi,
+	ttsModelApi,
+} from '@/api';
 import type {
 	CredentialView,
 	CredentialSchema,
+	CustomModelCard,
 	EmbeddingModelCard,
 	ModelCard,
 	TTSModelCard,
@@ -14,7 +21,17 @@ import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditCredentialDialog } from '@/components/dialog/EditCredentialDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import {
 	Sidebar,
@@ -43,7 +60,7 @@ import { cn } from '@/lib/utils';
 import { formatNumber } from '@/utils/common.ts';
 
 /** Which model list the detail panel is showing. */
-type ModelTab = 'llm' | 'tts' | 'embedding';
+type ModelTab = 'llm' | 'tts' | 'embedding' | 'custom';
 
 /** A row in the model table — one of the three card shapes. */
 type ModelRow = ModelCard | TTSModelCard | EmbeddingModelCard;
@@ -137,6 +154,535 @@ interface ModelTableProps {
 	models: ModelRow[];
 	/** Drives which numeric columns sit between MODEL and ACCEPTS. */
 	variant: ModelTab;
+	/** Credential ID for connection tests. */
+	credentialId: string;
+}
+
+// ─── Test connection button ───────────────────────────────────────────────────
+
+type TestState = 'idle' | 'testing' | 'success' | 'failed';
+
+function TestButton({ credentialId, modelName }: { credentialId: string; modelName: string }) {
+	const { t } = useTranslation();
+	const [state, setState] = useState<TestState>('idle');
+
+	const handleTest = async () => {
+		setState('testing');
+		try {
+			const res = await customModelApi.test({
+				credential_id: credentialId,
+				model_name: modelName,
+			});
+			setState(res.success ? 'success' : 'failed');
+		} catch {
+			setState('failed');
+		}
+		// Reset after 5 seconds so the user can re-test.
+		setTimeout(() => setState('idle'), 5000);
+	};
+
+	return (
+		<Button
+			size="sm"
+			variant="ghost"
+			className="h-7 gap-x-1.5 px-2 text-[11px] font-normal text-text-tertiary"
+			disabled={state === 'testing'}
+			onClick={handleTest}
+		>
+			{state === 'testing' && <Loader2 className="size-3 animate-spin" />}
+			{state === 'success' && <CheckCircle2 className="size-3 text-green-500" />}
+			{state === 'failed' && <XCircle className="size-3 text-destructive" />}
+			{state === 'idle' && <Zap className="size-3" />}
+			<span>
+				{state === 'testing'
+					? t('credential.testing')
+					: state === 'success'
+						? t('credential.testSuccess')
+						: state === 'failed'
+							? t('credential.testFailed')
+							: t('credential.testConnection')}
+			</span>
+		</Button>
+	);
+}
+
+// ─── Model info dialog ────────────────────────────────────────────────────────
+
+/** Unified shape for the info dialog — works for built-in and custom models. */
+interface ModelInfoData {
+	name: string;
+	label: string;
+	status: string;
+	input_types: string[];
+	output_types: string[];
+	context_size: number | null;
+	output_size: number | null;
+	parameter_overrides?: Record<string, Record<string, unknown>>;
+	deprecated_at?: string | null;
+}
+
+function ModelInfoDialog({
+	open,
+	onOpenChange,
+	models,
+	index,
+	onIndexChange,
+}: {
+	open: boolean;
+	onOpenChange: (v: boolean) => void;
+	models: ModelInfoData[];
+	index: number;
+	onIndexChange: (i: number) => void;
+}) {
+	const { t } = useTranslation();
+	const model = models[index];
+
+	const goPrev = useCallback(
+		() => onIndexChange((index - 1 + models.length) % models.length),
+		[index, models.length, onIndexChange],
+	);
+	const goNext = useCallback(
+		() => onIndexChange((index + 1) % models.length),
+		[index, models.length, onIndexChange],
+	);
+
+	const handleKeyDown = useCallback(
+		(e: KeyboardEvent) => {
+			if (e.key === 'ArrowLeft') {
+				e.preventDefault();
+				goPrev();
+			} else if (e.key === 'ArrowRight') {
+				e.preventDefault();
+				goNext();
+			}
+		},
+		[goPrev, goNext],
+	);
+
+	useEffect(() => {
+		if (!open) return;
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, [open, handleKeyDown]);
+
+	if (!model) return null;
+
+	const overrides = model.parameter_overrides
+		? Object.entries(model.parameter_overrides)
+		: [];
+	const hasMultiple = models.length > 1;
+
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="max-w-[480px]">
+				<DialogHeader>
+					<div className="flex items-center justify-between gap-x-2">
+						<DialogTitle>{t('credential.modelInfo.title')}</DialogTitle>
+						{hasMultiple && (
+							<div className="flex items-center gap-x-1">
+								<Button
+									size="icon-sm"
+									variant="ghost"
+									className="text-text-tertiary hover:text-foreground"
+									onClick={goPrev}
+									disabled={models.length <= 1}
+									tooltip={t('credential.modelInfo.previous')}
+								>
+									<ChevronLeft className="size-4" />
+								</Button>
+								<span className="font-mono text-[11px] text-text-data tabular-nums">
+									{index + 1} / {models.length}
+								</span>
+								<Button
+									size="icon-sm"
+									variant="ghost"
+									className="text-text-tertiary hover:text-foreground"
+									onClick={goNext}
+									disabled={models.length <= 1}
+									tooltip={t('credential.modelInfo.next')}
+								>
+									<ChevronRight className="size-4" />
+								</Button>
+							</div>
+						)}
+					</div>
+					<DialogDescription>{model.label || model.name}</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-y-3 py-2">
+					<div className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-2.5 font-mono">
+						<span className="text-[10px] text-text-tertiary tracking-[0.12em] uppercase">
+							{t('credential.modelInfo.name')}
+						</span>
+						<span className="text-sm text-foreground break-all">{model.name}</span>
+						<span className="text-[10px] text-text-tertiary tracking-[0.12em] uppercase">
+							{t('credential.modelInfo.label')}
+						</span>
+						<span className="text-sm text-foreground break-all">{model.label}</span>
+						<span className="text-[10px] text-text-tertiary tracking-[0.12em] uppercase">
+							{t('credential.modelInfo.status')}
+						</span>
+						<span className="text-sm text-foreground">{model.status}</span>
+						{model.deprecated_at && (
+							<>
+								<span className="text-[10px] text-text-tertiary tracking-[0.12em] uppercase">
+									{t('credential.modelInfo.deprecatedAt')}
+								</span>
+								<span className="text-sm text-foreground">{model.deprecated_at}</span>
+							</>
+						)}
+						<span className="text-[10px] text-text-tertiary tracking-[0.12em] uppercase">
+							{t('credential.modelInfo.inputTypes')}
+						</span>
+						<span className="text-sm text-foreground break-all">
+							{model.input_types.join(', ') || '—'}
+						</span>
+						<span className="text-[10px] text-text-tertiary tracking-[0.12em] uppercase">
+							{t('credential.modelInfo.outputTypes')}
+						</span>
+						<span className="text-sm text-foreground break-all">
+							{model.output_types.join(', ') || '—'}
+						</span>
+						<span className="text-[10px] text-text-tertiary tracking-[0.12em] uppercase">
+							{t('credential.modelInfo.contextSize')}
+						</span>
+						<span className="text-sm text-foreground">
+							{model.context_size
+								? `${formatNumber(model.context_size)} ${t('credential.modelInfo.tokens')}`
+								: '—'}
+						</span>
+						<span className="text-[10px] text-text-tertiary tracking-[0.12em] uppercase">
+							{t('credential.modelInfo.outputSize')}
+						</span>
+						<span className="text-sm text-foreground">
+							{model.output_size
+								? `${formatNumber(model.output_size)} ${t('credential.modelInfo.tokens')}`
+								: '—'}
+						</span>
+					</div>
+					{overrides.length > 0 && (
+						<div className="mt-1">
+							<span className="text-[10px] text-text-tertiary tracking-[0.12em] uppercase font-mono">
+								{t('credential.modelInfo.parameterOverrides')}
+							</span>
+							<div className="mt-1.5 space-y-1.5">
+								{overrides.map(([key, vals]) => (
+									<div
+										key={key}
+										className="rounded-md border border-border bg-surface-muted px-3 py-1.5 font-mono text-[11px]"
+									>
+										<span className="text-text-secondary">{key}:</span>{' '}
+										<span className="text-text-tertiary">
+											{Object.entries(vals)
+												.map(([k, v]) => `${k}=${String(v)}`)
+												.join(', ')}
+										</span>
+									</div>
+								))}
+							</div>
+						</div>
+					)}
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+// ─── Add custom model dialog ──────────────────────────────────────────────────
+
+function AddCustomModelDialog({
+	open,
+	onOpenChange,
+	onAdd,
+}: {
+	open: boolean;
+	onOpenChange: (v: boolean) => void;
+	onAdd: (model: {
+		name: string;
+		label?: string;
+		input_types?: string[];
+		output_types?: string[];
+		context_size?: number | null;
+		output_size?: number | null;
+	}) => void;
+}) {
+	const { t } = useTranslation();
+	const [name, setName] = useState('');
+	const [label, setLabel] = useState('');
+	const [inputTypes, setInputTypes] = useState('');
+	const [outputTypes, setOutputTypes] = useState('');
+	const [contextSize, setContextSize] = useState('');
+	const [outputSize, setOutputSize] = useState('');
+
+	const reset = () => {
+		setName('');
+		setLabel('');
+		setInputTypes('');
+		setOutputTypes('');
+		setContextSize('');
+		setOutputSize('');
+	};
+
+	const handleSubmit = () => {
+		const trimmedName = name.trim();
+		if (!trimmedName) return;
+		onAdd({
+			name: trimmedName,
+			label: label.trim() || undefined,
+			input_types: inputTypes.trim()
+				? inputTypes.split(',').map((s) => s.trim()).filter(Boolean)
+				: undefined,
+			output_types: outputTypes.trim()
+				? outputTypes.split(',').map((s) => s.trim()).filter(Boolean)
+				: undefined,
+			context_size: contextSize.trim() ? Number(contextSize) || null : null,
+			output_size: outputSize.trim() ? Number(outputSize) || null : null,
+		});
+		reset();
+		onOpenChange(false);
+	};
+
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="max-w-[460px]">
+				<DialogHeader>
+					<DialogTitle>{t('credential.addCustomModelDialog.title')}</DialogTitle>
+					<DialogDescription>
+						{t('credential.addCustomModelDialog.description')}
+					</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-y-3 py-2">
+					<div className="flex flex-col gap-y-1.5">
+						<Label className="text-[11px] text-text-tertiary">
+							{t('credential.customModelName')}
+						</Label>
+						<Input
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === 'Enter') handleSubmit();
+							}}
+							placeholder={t('credential.customModelNamePlaceholder')}
+							className="h-8 text-sm"
+							autoFocus
+						/>
+					</div>
+					<div className="flex flex-col gap-y-1.5">
+						<Label className="text-[11px] text-text-tertiary">
+							{t('credential.addCustomModelDialog.labelField')}
+						</Label>
+						<Input
+							value={label}
+							onChange={(e) => setLabel(e.target.value)}
+							placeholder={t('credential.addCustomModelDialog.labelPlaceholder')}
+							className="h-8 text-sm"
+						/>
+					</div>
+					<div className="flex flex-col gap-y-1.5">
+						<Label className="text-[11px] text-text-tertiary">
+							{t('credential.addCustomModelDialog.inputTypes')}
+						</Label>
+						<Input
+							value={inputTypes}
+							onChange={(e) => setInputTypes(e.target.value)}
+							placeholder={t('credential.addCustomModelDialog.inputTypesPlaceholder')}
+							className="h-8 text-sm"
+						/>
+					</div>
+					<div className="flex flex-col gap-y-1.5">
+						<Label className="text-[11px] text-text-tertiary">
+							{t('credential.addCustomModelDialog.outputTypes')}
+						</Label>
+						<Input
+							value={outputTypes}
+							onChange={(e) => setOutputTypes(e.target.value)}
+							placeholder={t('credential.addCustomModelDialog.outputTypesPlaceholder')}
+							className="h-8 text-sm"
+						/>
+					</div>
+					<div className="grid grid-cols-2 gap-x-3">
+						<div className="flex flex-col gap-y-1.5">
+							<Label className="text-[11px] text-text-tertiary">
+								{t('credential.addCustomModelDialog.contextSize')}
+							</Label>
+							<Input
+								value={contextSize}
+								onChange={(e) => setContextSize(e.target.value)}
+								placeholder={t('credential.addCustomModelDialog.contextSizePlaceholder')}
+								className="h-8 text-sm"
+								type="number"
+							/>
+						</div>
+						<div className="flex flex-col gap-y-1.5">
+							<Label className="text-[11px] text-text-tertiary">
+								{t('credential.addCustomModelDialog.outputSize')}
+							</Label>
+							<Input
+								value={outputSize}
+								onChange={(e) => setOutputSize(e.target.value)}
+								placeholder={t('credential.addCustomModelDialog.outputSizePlaceholder')}
+								className="h-8 text-sm"
+								type="number"
+							/>
+						</div>
+					</div>
+				</div>
+				<DialogFooter>
+					<Button variant="ghost" onClick={() => onOpenChange(false)}>
+						{t('credential.addCustomModelDialog.cancel')}
+					</Button>
+					<Button disabled={!name.trim()} onClick={handleSubmit}>
+						<Plus className="size-3.5" />
+						{t('credential.addCustomModelDialog.submit')}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+// ─── Custom model table ───────────────────────────────────────────────────────
+
+function CustomModelTable({
+	models,
+	credentialId,
+	onAdd,
+	onRemove,
+}: {
+	models: CustomModelCard[];
+	credentialId: string;
+	onAdd: (model: {
+		name: string;
+		label?: string;
+		input_types?: string[];
+		output_types?: string[];
+		context_size?: number | null;
+		output_size?: number | null;
+	}) => void;
+	onRemove: (name: string) => void;
+}) {
+	const { t } = useTranslation();
+	const [addDialogOpen, setAddDialogOpen] = useState(false);
+	const [infoIndex, setInfoIndex] = useState<number>(-1);
+
+	return (
+		<div className="space-y-3">
+			{/* Add model button */}
+			<div className="flex items-center gap-x-2">
+				<Button
+					size="sm"
+					className="h-8 gap-x-1.5"
+					onClick={() => setAddDialogOpen(true)}
+				>
+					<Plus className="size-3.5" />
+					{t('credential.addCustomModel')}
+				</Button>
+			</div>
+
+			{/* Add model dialog */}
+			<AddCustomModelDialog
+				open={addDialogOpen}
+				onOpenChange={setAddDialogOpen}
+				onAdd={onAdd}
+			/>
+
+			{/* Model info dialog */}
+			<ModelInfoDialog
+				open={infoIndex >= 0}
+				onOpenChange={(v) => !v && setInfoIndex(-1)}
+				models={models}
+				index={Math.max(0, infoIndex)}
+				onIndexChange={setInfoIndex}
+			/>
+
+			{/* Model list */}
+			{models.length === 0 ? (
+				<Empty className="border-none py-6">
+					<EmptyHeader>
+						<EmptyTitle>{t('credential.noCustomModels')}</EmptyTitle>
+						<EmptyDescription>
+							{t('credential.noCustomModelsDescription')}
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			) : (
+				<div className="overflow-x-auto rounded-[16px] border border-border">
+					<Table className="min-w-[500px]">
+						<TableHeader>
+							<TableRow className="border-border hover:bg-transparent">
+								<HeadCell>{t('credential.table.model')}</HeadCell>
+								<HeadCell>{t('credential.table.context')}</HeadCell>
+								<HeadCell>{t('credential.table.maxOutput')}</HeadCell>
+								<HeadCell>{t('credential.table.accepts')}</HeadCell>
+								<HeadCell>{t('credential.table.outputs')}</HeadCell>
+								<HeadCell>{t('credential.testConnection')}</HeadCell>
+								<HeadCell className="w-20" />
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{models.map((model, idx) => (
+								<TableRow
+									key={model.name}
+									className="border-border hover:bg-row-hover"
+								>
+									<TableCell className="px-4 py-2.5 text-[12.5px] text-foreground">
+										<span className="flex items-center gap-x-2">
+											<span
+												className="min-w-0 flex-1 truncate"
+												title={model.name}
+											>
+												{model.label || model.name}
+											</span>
+											{model.status !== 'active' && (
+												<ModelTag>{model.status}</ModelTag>
+											)}
+										</span>
+									</TableCell>
+									<DataCell size="11.5">
+										{model.context_size ? formatNumber(model.context_size) : '—'}
+									</DataCell>
+									<DataCell size="11.5">
+										{model.output_size ? formatNumber(model.output_size) : '—'}
+									</DataCell>
+									<DataCell size="11">
+										{modalities(model.input_types).join(' · ') || '—'}
+									</DataCell>
+									<DataCell size="11">
+										{modalities(model.output_types).join(' · ') || '—'}
+									</DataCell>
+									<TableCell className="px-4 py-2.5">
+										<TestButton
+											credentialId={credentialId}
+											modelName={model.name}
+										/>
+									</TableCell>
+									<TableCell className="px-2 py-2.5">
+										<div className="flex items-center gap-x-0.5">
+											<Button
+												size="icon-sm"
+												variant="ghost"
+												className="text-text-tertiary hover:text-foreground"
+												onClick={() => setInfoIndex(idx)}
+											>
+												<Info className="size-3.5" />
+											</Button>
+											<Button
+												size="icon-sm"
+												variant="ghost"
+												className="text-text-tertiary hover:bg-destructive/8 hover:text-destructive"
+												onClick={() => onRemove(model.name)}
+											>
+												<Trash2 className="size-3.5" />
+											</Button>
+										</div>
+									</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				</div>
+			)}
+		</div>
+	);
 }
 
 /**
@@ -147,13 +693,21 @@ interface ModelTableProps {
  * @param variant - Which column set applies.
  * @returns The bordered table plus its legend.
  */
-function ModelTable({ models, variant }: ModelTableProps) {
+function ModelTable({ models, variant, credentialId }: ModelTableProps) {
 	const { t } = useTranslation();
 	const isChat = variant === 'llm';
 	const isEmbedding = variant === 'embedding';
+	const [infoIndex, setInfoIndex] = useState<number>(-1);
 
 	return (
 		<div>
+			<ModelInfoDialog
+				open={infoIndex >= 0}
+				onOpenChange={(v) => !v && setInfoIndex(-1)}
+				models={models as ModelInfoData[]}
+				index={Math.max(0, infoIndex)}
+				onIndexChange={setInfoIndex}
+			/>
 			<div className="overflow-x-auto rounded-[16px] border border-border">
 				<Table className="min-w-[500px]">
 					<TableHeader>
@@ -166,10 +720,12 @@ function ModelTable({ models, variant }: ModelTableProps) {
 							{isEmbedding && <HeadCell>{t('credential.table.dimensions')}</HeadCell>}
 							<HeadCell>{t('credential.table.accepts')}</HeadCell>
 							<HeadCell>{t('credential.table.outputs')}</HeadCell>
+							{isChat && <HeadCell>{t('credential.testConnection')}</HeadCell>}
+							<HeadCell className="w-10" />
 						</TableRow>
 					</TableHeader>
 					<TableBody>
-						{models.map((model) => {
+						{models.map((model, idx) => {
 							const chat = isChat ? (model as ModelCard) : null;
 							const embed = isEmbedding ? (model as EmbeddingModelCard) : null;
 							const tts = variant === 'tts' ? (model as TTSModelCard) : null;
@@ -219,6 +775,24 @@ function ModelTable({ models, variant }: ModelTableProps) {
 									<DataCell size="11">
 										{modalities(model.output_types).join(' · ') || '—'}
 									</DataCell>
+									{isChat && (
+										<TableCell className="px-4 py-2.5">
+											<TestButton
+												credentialId={credentialId}
+												modelName={model.name}
+											/>
+										</TableCell>
+									)}
+									<TableCell className="px-2 py-2.5">
+										<Button
+											size="icon-sm"
+											variant="ghost"
+											className="text-text-tertiary hover:text-foreground"
+											onClick={() => setInfoIndex(idx)}
+										>
+											<Info className="size-3.5" />
+										</Button>
+									</TableCell>
 								</TableRow>
 							);
 						})}
@@ -246,12 +820,20 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 	const [models, setModels] = useState<ModelCard[]>([]);
 	const [ttsModels, setTtsModels] = useState<TTSModelCard[]>([]);
 	const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelCard[]>([]);
+	const [customModels, setCustomModels] = useState<CustomModelCard[]>([]);
 	const [modelsLoading, setModelsLoading] = useState(false);
 	const [tab, setTab] = useState<ModelTab>('llm');
 
 	const type = credential.data.type as string | undefined;
-	const shown = tab === 'llm' ? models : tab === 'tts' ? ttsModels : embeddingModels;
-	const total = models.length + ttsModels.length + embeddingModels.length;
+	const shown =
+		tab === 'llm'
+			? models
+			: tab === 'tts'
+				? ttsModels
+				: tab === 'embedding'
+					? embeddingModels
+					: [];
+	const total = models.length + ttsModels.length + embeddingModels.length + customModels.length;
 
 	// A credential switch can land on a provider with no TTS models at
 	// all, which would leave the tab pointing at an empty list.
@@ -273,14 +855,50 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 				.list(type)
 				.then((res) => res.models)
 				.catch(() => [] as EmbeddingModelCard[]),
+			customModelApi
+				.list(credential.id)
+				.then((res) => res.models)
+				.catch(() => [] as CustomModelCard[]),
 		])
-			.then(([chatModels, tts, embeddings]) => {
+			.then(([chatModels, tts, embeddings, custom]) => {
 				setModels(chatModels);
 				setTtsModels(tts);
 				setEmbeddingModels(embeddings);
+				setCustomModels(custom);
 			})
 			.finally(() => setModelsLoading(false));
 	}, [credential.id, type]);
+
+	const handleAddCustomModel = useCallback(
+		async (model: {
+			name: string;
+			label?: string;
+			input_types?: string[];
+			output_types?: string[];
+			context_size?: number | null;
+			output_size?: number | null;
+		}) => {
+			try {
+				const res = await customModelApi.add(credential.id, model);
+				setCustomModels(res.models);
+			} catch {
+				// Error toast is handled by the API client.
+			}
+		},
+		[credential.id],
+	);
+
+	const handleRemoveCustomModel = useCallback(
+		async (name: string) => {
+			try {
+				const res = await customModelApi.remove(credential.id, name);
+				setCustomModels(res.models);
+			} catch {
+				// Error toast is handled by the API client.
+			}
+		},
+		[credential.id],
+	);
 
 	// Fields to display: use schema properties order, skip id/type/const fields
 	const displayFields = schema
@@ -385,48 +1003,59 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 							{t('credential.availableModels')}
 							<span className="font-mono text-[11px] text-text-data">{total}</span>
 						</span>
-						{/* Only worth a switch when there is a second list to switch to. */}
-						{(ttsModels.length > 0 || embeddingModels.length > 0) && (
-							<TabsList className="bg-surface-muted">
-								{/* Only the shadow is overridden here; the stock one
-							    is shadow-sm. */}
+						<TabsList className="bg-surface-muted">
+							<TabsTrigger
+								value="llm"
+								className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
+							>
+								{t('common.llm')}
+								<span className="font-mono text-[10px] text-text-data">
+									{models.length}
+								</span>
+							</TabsTrigger>
+							{ttsModels.length > 0 && (
 								<TabsTrigger
-									value="llm"
+									value="tts"
 									className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
 								>
-									{t('common.llm')}
+									{t('common.tts')}
 									<span className="font-mono text-[10px] text-text-data">
-										{models.length}
+										{ttsModels.length}
 									</span>
 								</TabsTrigger>
-								{ttsModels.length > 0 && (
-									<TabsTrigger
-										value="tts"
-										className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
-									>
-										{t('common.tts')}
-										<span className="font-mono text-[10px] text-text-data">
-											{ttsModels.length}
-										</span>
-									</TabsTrigger>
-								)}
-								{embeddingModels.length > 0 && (
-									<TabsTrigger
-										value="embedding"
-										className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
-									>
-										{t('common.embedding')}
-										<span className="font-mono text-[10px] text-text-data">
-											{embeddingModels.length}
-										</span>
-									</TabsTrigger>
-								)}
-							</TabsList>
-						)}
+							)}
+							{embeddingModels.length > 0 && (
+								<TabsTrigger
+									value="embedding"
+									className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
+								>
+									{t('common.embedding')}
+									<span className="font-mono text-[10px] text-text-data">
+										{embeddingModels.length}
+									</span>
+								</TabsTrigger>
+							)}
+							<TabsTrigger
+								value="custom"
+								className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
+							>
+								{t('credential.custom')}
+								<span className="font-mono text-[10px] text-text-data">
+									{customModels.length}
+								</span>
+							</TabsTrigger>
+						</TabsList>
 					</div>
 
 					{modelsLoading ? (
 						<Skeleton className="h-40 rounded-[16px]" />
+					) : tab === 'custom' ? (
+						<CustomModelTable
+							models={customModels}
+							credentialId={credential.id}
+							onAdd={handleAddCustomModel}
+							onRemove={handleRemoveCustomModel}
+						/>
 					) : shown.length === 0 ? (
 						<Empty className="border-none py-6">
 							<EmptyHeader>
@@ -439,13 +1068,25 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 					) : (
 						<>
 							<TabsContent value="llm">
-								<ModelTable models={models} variant="llm" />
+								<ModelTable
+									models={models}
+									variant="llm"
+									credentialId={credential.id}
+								/>
 							</TabsContent>
 							<TabsContent value="tts">
-								<ModelTable models={ttsModels} variant="tts" />
+								<ModelTable
+									models={ttsModels}
+									variant="tts"
+									credentialId={credential.id}
+								/>
 							</TabsContent>
 							<TabsContent value="embedding">
-								<ModelTable models={embeddingModels} variant="embedding" />
+								<ModelTable
+									models={embeddingModels}
+									variant="embedding"
+									credentialId={credential.id}
+								/>
 							</TabsContent>
 						</>
 					)}

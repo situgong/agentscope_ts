@@ -24,6 +24,7 @@
 		"name": "Name",
 		"no": "No",
 		"noData": "No data",
+		"pipeline": "Pipeline",
 		"readOnly": "Read-only",
 		"readOnlyTooltip": "Shared with you as read-only; editing and deletion are disabled.",
 		"completed": "Completed",
@@ -51,7 +52,11 @@
 		"message": "Message",
 		"llm": "LLM",
 		"tts": "TTS",
-		"embedding": "Embedding"
+		"embedding": "Embedding",
+		"theme": "Theme",
+		"themeLight": "Light",
+		"themeDark": "Dark",
+		"themeAuto": "Auto"
 	},
 	"error": {
 		"description": "The page hit an unexpected error. You can retry or go back home.",
@@ -317,6 +322,17 @@
 		"addProvider": "Add credential",
 		"reasoning": "Reasoning",
 		"realtime": "Realtime",
+		"custom": "Custom",
+		"customModels": "Custom Models",
+		"addCustomModel": "Add model",
+		"customModelName": "Model name",
+		"customModelNamePlaceholder": "e.g. my-custom-model",
+		"noCustomModels": "No custom models",
+		"noCustomModelsDescription": "Add a custom model name to test models you deployed yourself.",
+		"testConnection": "Test connection",
+		"testing": "Testing…",
+		"testSuccess": "Connected",
+		"testFailed": "Failed",
 		"table": {
 			"model": "Model",
 			"context": "Context",
@@ -325,6 +341,38 @@
 			"outputs": "Outputs",
 			"legend": "Context and max output are token counts. REASONING marks models that support extended thinking.",
 			"dimensions": "Dimensions"
+		},
+		"modelInfo": {
+			"title": "Model Information",
+			"name": "Name",
+			"label": "Label",
+			"status": "Status",
+			"inputTypes": "Input types",
+			"outputTypes": "Output types",
+			"contextSize": "Context size",
+			"outputSize": "Output size",
+			"parameterOverrides": "Parameter overrides",
+			"deprecatedAt": "Deprecated at",
+			"noParameterOverrides": "None",
+			"tokens": "tokens",
+			"previous": "Previous model",
+			"next": "Next model"
+		},
+		"addCustomModelDialog": {
+			"title": "Add Custom Model",
+			"description": "Register a model you deployed yourself. Only the name is required; fill in the rest for richer display.",
+			"labelField": "Display label",
+			"labelPlaceholder": "e.g. My Fine-tuned Model",
+			"inputTypes": "Input types (comma-separated MIME types)",
+			"inputTypesPlaceholder": "e.g. text/plain, image/png",
+			"outputTypes": "Output types (comma-separated MIME types)",
+			"outputTypesPlaceholder": "e.g. text/plain",
+			"contextSize": "Context size (tokens)",
+			"contextSizePlaceholder": "e.g. 131072",
+			"outputSize": "Max output (tokens)",
+			"outputSizePlaceholder": "e.g. 32768",
+			"cancel": "Cancel",
+			"submit": "Add model"
 		}
 	},
 	"knowledge": {

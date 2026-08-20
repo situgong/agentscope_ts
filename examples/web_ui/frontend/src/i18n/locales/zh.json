@@ -24,6 +24,7 @@
 		"name": "名称",
 		"no": "否",
 		"noData": "暂无数据",
+		"pipeline": "流水线",
 		"readOnly": "只读",
 		"readOnlyTooltip": "该资源以只读方式共享给你，编辑和删除均被禁用。",
 		"completed": "已完成",
@@ -51,7 +52,11 @@
 		"message": "消息",
 		"llm": "LLM",
 		"tts": "TTS",
-		"embedding": "向量"
+		"embedding": "向量",
+		"theme": "主题",
+		"themeLight": "浅色",
+		"themeDark": "深色",
+		"themeAuto": "跟随系统"
 	},
 	"error": {
 		"description": "页面遇到意外错误。你可以重试或返回首页。",
@@ -317,6 +322,17 @@
 		"addProvider": "添加凭证",
 		"reasoning": "推理模型",
 		"realtime": "实时",
+		"custom": "自定义",
+		"customModels": "自定义模型",
+		"addCustomModel": "添加模型",
+		"customModelName": "模型名称",
+		"customModelNamePlaceholder": "例如 my-custom-model",
+		"noCustomModels": "暂无自定义模型",
+		"noCustomModelsDescription": "添加自定义模型名称以测试您自行部署的模型。",
+		"testConnection": "测试连接",
+		"testing": "测试中…",
+		"testSuccess": "已连接",
+		"testFailed": "失败",
 		"table": {
 			"model": "模型",
 			"context": "上下文",
@@ -325,6 +341,38 @@
 			"outputs": "输出",
 			"legend": "上下文与最大输出均以 token 计。REASONING 表示模型支持深度思考。",
 			"dimensions": "维度"
+		},
+		"modelInfo": {
+			"title": "模型信息",
+			"name": "名称",
+			"label": "标签",
+			"status": "状态",
+			"inputTypes": "输入类型",
+			"outputTypes": "输出类型",
+			"contextSize": "上下文长度",
+			"outputSize": "最大输出",
+			"parameterOverrides": "参数覆盖",
+			"deprecatedAt": "弃用时间",
+			"noParameterOverrides": "无",
+			"tokens": "tokens",
+			"previous": "上一个模型",
+			"next": "下一个模型"
+		},
+		"addCustomModelDialog": {
+			"title": "添加自定义模型",
+			"description": "注册您自行部署的模型。仅名称为必填，其余字段可选，填写后显示更丰富。",
+			"labelField": "显示标签",
+			"labelPlaceholder": "例如：我的微调模型",
+			"inputTypes": "输入类型（逗号分隔的 MIME 类型）",
+			"inputTypesPlaceholder": "例如：text/plain, image/png",
+			"outputTypes": "输出类型（逗号分隔的 MIME 类型）",
+			"outputTypesPlaceholder": "例如：text/plain",
+			"contextSize": "上下文长度（tokens）",
+			"contextSizePlaceholder": "例如：131072",
+			"outputSize": "最大输出（tokens）",
+			"outputSizePlaceholder": "例如：32768",
+			"cancel": "取消",
+			"submit": "添加模型"
 		}
 	},
 	"knowledge": {

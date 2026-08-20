@@ -1016,6 +1016,70 @@ export interface ListKbEmbeddingModelsResponse {
 	policy: DimensionPolicy;
 }
 
+// ─── Pipeline ─────────────────────────────────────────────────────────────────
+
+export interface PipelineStep {
+	agent_id: string;
+	instruction: string;
+}
+
+export interface RunPipelineRequest {
+	steps: PipelineStep[];
+	chat_model_config: ChatModelConfig;
+}
+
+export interface PipelineStepResult {
+	step_index: number;
+	agent_id: string;
+	agent_name: string;
+	instruction: string;
+	reply: Msg;
+}
+
+export interface RunPipelineResponse {
+	results: PipelineStepResult[];
+}
+
+// ─── Custom Model ─────────────────────────────────────────────────────────────
+
+/**
+ * Model-card-like info for a custom (user-deployed) model. Mirrors the
+ * Python `CustomModelInfo` schema in `custom_model_router.py`.
+ */
+export interface CustomModelCard {
+	name: string;
+	label: string;
+	status: string;
+	input_types: string[];
+	output_types: string[];
+	context_size: number | null;
+	output_size: number | null;
+}
+
+export interface CustomModelListResponse {
+	models: CustomModelCard[];
+}
+
+export interface AddCustomModelRequest {
+	name: string;
+	label?: string;
+	input_types?: string[];
+	output_types?: string[];
+	context_size?: number | null;
+	output_size?: number | null;
+}
+
+export interface TestModelRequest {
+	credential_id: string;
+	model_name: string;
+}
+
+export interface TestModelResponse {
+	success: boolean;
+	message: string;
+	reply: string | null;
+}
+
 /**
  * Session-level knowledge base attachment. Persisted on
  * :class:`SessionConfig.knowledge_config` and translated into a

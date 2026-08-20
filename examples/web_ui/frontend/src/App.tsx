@@ -14,8 +14,7 @@ import { useTranslation } from '@/i18n/useI18n';
 import { ChannelPage } from '@/pages/channel';
 import { ChatPage } from '@/pages/chat';
 import { CredentialPage } from '@/pages/credential';
-import { KnowledgePage } from '@/pages/knowledge';
-import { SchedulePage } from '@/pages/schedule';
+import { KnowledgePage } from '@/pages/knowledge';import { PipelinePage } from './pages/pipeline';import { SchedulePage } from '@/pages/schedule';
 import { SetupPage } from '@/pages/setup';
 
 function SetupPageRoute() {
@@ -56,6 +55,7 @@ const router = createBrowserRouter([
 					{ path: '/skill/:hubId', element: <SkillHubPage /> },
 					{ path: '/knowledge', element: <KnowledgePage /> },
 					{ path: '/knowledge/:kbId', element: <KnowledgePage /> },
+					{ path: '/pipeline', element: <PipelinePage /> },
 				],
 			},
 		],

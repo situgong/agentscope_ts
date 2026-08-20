@@ -168,6 +168,20 @@ so anything you want them to see MUST be sent through `TeamSay`.""",
 )
 
 
+# Register the custom pipeline router — per-step instruction pipeline
+# that chains agents, giving each its own instruction combined with the
+# previous agent's output.
+from pipeline_router import pipeline_router
+
+app.include_router(pipeline_router)
+
+# Register the custom model management router — lets users add/remove
+# custom model names and run connection tests from the credential page.
+from custom_model_router import custom_model_router
+
+app.include_router(custom_model_router)
+
+
 if __name__ == "__main__":
     # Start the service.
     # NOTE: reload=True forces uvicorn's use_subprocess=True, which on

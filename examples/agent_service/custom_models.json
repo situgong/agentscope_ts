@@ -1,0 +1,17 @@
+{
+  "a37668c17d7b4deb8d45d048c917ad00": [
+    {
+      "name": "GLM-5",
+      "label": "GLM-5",
+      "status": "active",
+      "input_types": [
+        "text/plain"
+      ],
+      "output_types": [
+        "text/plain"
+      ],
+      "context_size": null,
+      "output_size": null
+    }
+  ]
+}
