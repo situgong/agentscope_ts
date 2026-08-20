@@ -1,8 +1,9 @@
-import { Loader2, Plus, Trash2, Play, GitBranch, ArrowDown } from 'lucide-react';
+import { Loader2, Plus, Trash2, Play, GitBranch, ArrowDown, ChevronRight, ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { agentApi, pipelineApi, type AgentView, type ChatModelConfig, type PipelineStepResult } from '@/api';
+import type { PipelineStep, PipelineSubStep } from '@/api/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,18 +15,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
 
-interface PipelineStep {
-	agent_id: string;
-	instruction: string;
-}
-
 export function PipelinePage() {
 	const { t } = useTranslation();
 	const [agents, setAgents] = useState<AgentView[]>([]);
 	const [loadingAgents, setLoadingAgents] = useState(true);
 	const [steps, setSteps] = useState<PipelineStep[]>([
-		{ agent_id: '', instruction: '' },
-		{ agent_id: '', instruction: '' },
+		{ agent_id: '', instruction: '', sub_steps: [] },
+		{ agent_id: '', instruction: '', sub_steps: [] },
 	]);
 	const [modelConfig, setModelConfig] = useState<ChatModelConfig | null>(null);
 	const [running, setRunning] = useState(false);
@@ -33,6 +29,7 @@ export function PipelinePage() {
 	const [error, setError] = useState('');
 	const [credentialOpen, setCredentialOpen] = useState(false);
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
+	const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
 
 	useEffect(() => {
 		agentApi
@@ -43,11 +40,37 @@ export function PipelinePage() {
 	}, []);
 
 	const addStep = () =>
-		setSteps([...steps, { agent_id: '', instruction: '' }]);
+		setSteps([...steps, { agent_id: '', instruction: '', sub_steps: [] }]);
 	const removeStep = (idx: number) =>
 		setSteps(steps.filter((_, i) => i !== idx));
 	const updateStep = (idx: number, patch: Partial<PipelineStep>) =>
 		setSteps(steps.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+
+	const toggleStepExpanded = (idx: number) => {
+		setExpandedSteps((prev) => {
+			const next = new Set(prev);
+			if (next.has(idx)) next.delete(idx);
+			else next.add(idx);
+			return next;
+		});
+	};
+
+	const addSubStep = (stepIdx: number) =>
+		updateStep(stepIdx, {
+			sub_steps: [...(steps[stepIdx].sub_steps || []), { agent_id: '', instruction: '' }],
+		});
+
+	const removeSubStep = (stepIdx: number, subIdx: number) =>
+		updateStep(stepIdx, {
+			sub_steps: (steps[stepIdx].sub_steps || []).filter((_, i) => i !== subIdx),
+		});
+
+	const updateSubStep = (stepIdx: number, subIdx: number, patch: Partial<PipelineSubStep>) =>
+		updateStep(stepIdx, {
+			sub_steps: (steps[stepIdx].sub_steps || []).map((s, i) =>
+				i === subIdx ? { ...s, ...patch } : s
+			),
+		});
 
 	const handleRun = async () => {
 		setError('');
@@ -69,6 +92,12 @@ export function PipelinePage() {
 				steps: valid.map((s) => ({
 					agent_id: s.agent_id,
 					instruction: s.instruction.trim(),
+					sub_steps: (s.sub_steps || [])
+						.filter((ss) => ss.agent_id && ss.instruction.trim())
+						.map((ss) => ({
+							agent_id: ss.agent_id,
+							instruction: ss.instruction.trim(),
+						})),
 				})),
 				chat_model_config: modelConfig,
 			});
@@ -181,6 +210,85 @@ export function PipelinePage() {
 													}
 													rows={2}
 												/>
+												{/* Sub-steps toggle + add button */}
+												<div className="flex items-center gap-2">
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => toggleStepExpanded(idx)}
+														className="text-xs text-muted-foreground"
+													>
+														{expandedSteps.has(idx) ? (
+															<ChevronDown className="size-3 mr-1" />
+														) : (
+															<ChevronRight className="size-3 mr-1" />
+														)}
+														{(step.sub_steps?.length || 0) > 0
+															? `${step.sub_steps!.length} sub-step${step.sub_steps!.length !== 1 ? 's' : ''}`
+															: 'Sub-steps'}
+													</Button>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => {
+															if (!expandedSteps.has(idx)) toggleStepExpanded(idx);
+															addSubStep(idx);
+														}}
+														className="text-xs text-muted-foreground"
+													>
+														<Plus className="size-3 mr-1" /> Add sub-step
+													</Button>
+												</div>
+												{/* Sub-steps list */}
+												{expandedSteps.has(idx) && (step.sub_steps || []).length > 0 && (
+													<div className="ml-4 space-y-2 border-l-2 border-muted pl-4">
+														{step.sub_steps!.map((sub, subIdx) => (
+															<div key={subIdx} className="space-y-1.5">
+																<div className="flex items-center gap-2">
+																	<span className="text-xs text-muted-foreground w-8">
+																		{idx + 1}.{subIdx + 1}
+																	</span>
+																	<Select
+																		value={sub.agent_id}
+																		onValueChange={(v) =>
+																			updateSubStep(idx, subIdx, { agent_id: v })
+																		}
+																	>
+																		<SelectTrigger className="h-8">
+																			<SelectValue placeholder="Select an agent" />
+																		</SelectTrigger>
+																		<SelectContent>
+																			{agents.map((a) => (
+																				<SelectItem key={a.id} value={a.id}>
+																					{a.data.name}
+																				</SelectItem>
+																			))}
+																		</SelectContent>
+																	</Select>
+																	<Button
+																		variant="ghost"
+																		size="icon"
+																		className="size-8"
+																		onClick={() => removeSubStep(idx, subIdx)}
+																	>
+																		<Trash2 className="size-3" />
+																	</Button>
+																</div>
+																<Textarea
+																	placeholder={`Instruction for sub-step ${idx + 1}.${subIdx + 1}…`}
+																	value={sub.instruction}
+																	onChange={(e) =>
+																		updateSubStep(idx, subIdx, {
+																			instruction: e.target.value,
+																		})
+																	}
+																	rows={2}
+																	className="text-sm"
+																/>
+															</div>
+														))}
+													</div>
+												)}
 											</div>
 											{steps.length > 1 && (
 												<Button
@@ -239,6 +347,27 @@ export function PipelinePage() {
 									<div className="text-sm whitespace-pre-wrap bg-muted/50 rounded p-3">
 										{extractText(r.reply)}
 									</div>
+									{/* Sub-step results */}
+									{r.sub_results && r.sub_results.length > 0 && (
+										<div className="ml-4 space-y-3 border-l-2 border-muted pl-4">
+											{r.sub_results.map((sr, si) => (
+												<div key={si} className="space-y-2">
+													<div className="flex items-center justify-between">
+														<span className="text-sm font-medium">
+															Sub-step {r.step_index + 1}.{sr.step_index + 1}: {sr.agent_name}
+														</span>
+														<code className="text-xs text-muted-foreground">{sr.agent_id}</code>
+													</div>
+													<div className="text-xs text-muted-foreground border-l-2 pl-3">
+														<span className="font-medium">Instruction:</span> {sr.instruction}
+													</div>
+													<div className="text-sm whitespace-pre-wrap bg-muted/50 rounded p-3">
+														{extractText(sr.reply)}
+													</div>
+												</div>
+											))}
+										</div>
+									)}
 								</div>
 							))}
 						</CardContent>

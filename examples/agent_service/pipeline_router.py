@@ -38,6 +38,24 @@ pipeline_router = APIRouter(
 # ── Schemas ────────────────────────────────────────────────────────────
 
 
+class PipelineSubStep(BaseModel):
+    """A sub-step within a pipeline step.
+
+    Attributes:
+        agent_id: The stored agent ID to run.
+        instruction: The instruction text for this sub-step's agent.
+    """
+
+    agent_id: str = Field(
+        ...,
+        description="The ID of the agent to run at this sub-step.",
+    )
+    instruction: str = Field(
+        ...,
+        description="The instruction for this sub-step's agent.",
+    )
+
+
 class PipelineStep(BaseModel):
     """One step in the pipeline.
 
@@ -45,6 +63,9 @@ class PipelineStep(BaseModel):
         agent_id: The stored agent ID to run.
         instruction: The instruction text for this agent. Combined with
             the previous step's output (if any) and sent to the agent.
+        sub_steps: Optional sub-steps that run after the parent step.
+            Each sub-step receives the parent step's output combined
+            with its own instruction.
     """
 
     agent_id: str = Field(
@@ -58,6 +79,10 @@ class PipelineStep(BaseModel):
             "is the sole input. For subsequent steps, it is combined "
             "with the previous agent's output."
         ),
+    )
+    sub_steps: list[PipelineSubStep] = Field(
+        default_factory=list,
+        description="Optional sub-steps executed after the parent step.",
     )
 
 
@@ -86,6 +111,14 @@ class PipelineStepResult(BaseModel):
     agent_name: str = Field(..., description="The agent name.")
     instruction: str = Field(..., description="The instruction that was given.")
     reply: Msg = Field(..., description="The agent's reply message.")
+    sub_results: list["PipelineStepResult"] = Field(
+        default_factory=list,
+        description="Results from sub-steps, if any.",
+    )
+
+
+# Resolve the forward reference in sub_results
+PipelineStepResult.model_rebuild()
 
 
 class RunPipelineResponse(BaseModel):
@@ -212,6 +245,34 @@ async def run_pipeline(
 
         reply = await agent.reply(inputs)
 
+        # Execute sub-steps: each receives the parent step's output
+        sub_results: list[PipelineStepResult] = []
+        current_reply = reply
+        for sub_idx, sub_step in enumerate(step.sub_steps):
+            sub_agent = await _assemble_agent(
+                user_id,
+                sub_step.agent_id,
+                request.chat_model_config,
+                access,
+            )
+            parent_text = current_reply.get_text_content() or ""
+            sub_combined = (
+                f"Previous output:\n{parent_text}\n\n"
+                f"Your instruction:\n{sub_step.instruction}"
+            )
+            sub_inputs = UserMsg(name="pipeline", content=sub_combined)
+            sub_reply = await sub_agent.reply(sub_inputs)
+            sub_results.append(
+                PipelineStepResult(
+                    step_index=sub_idx,
+                    agent_id=sub_step.agent_id,
+                    agent_name=sub_agent.name,
+                    instruction=sub_step.instruction,
+                    reply=sub_reply,
+                ),
+            )
+            current_reply = sub_reply
+
         results.append(
             PipelineStepResult(
                 step_index=idx,
@@ -219,9 +280,12 @@ async def run_pipeline(
                 agent_name=agent.name,
                 instruction=step.instruction,
                 reply=reply,
+                sub_results=sub_results,
             ),
         )
 
-        prev_reply = reply
+        # The last sub-step's output (or the parent's if no sub-steps)
+        # becomes the input for the next parent step.
+        prev_reply = current_reply
 
     return RunPipelineResponse(results=results)
