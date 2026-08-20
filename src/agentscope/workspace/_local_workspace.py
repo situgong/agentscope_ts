@@ -140,7 +140,7 @@ class LocalWorkspace(WorkspaceBase):
 
     async def list_tools(self) -> list[ToolBase]:
         """Return builtin tools, using PowerShell as the shell on Windows."""
-        from ..tool import Bash, Edit, Glob, Grep, PowerShell, Read, Write
+        from ..tool import A2UI, Bash, Edit, Glob, Grep, PowerShell, Read, Write
 
         backend = self.get_backend()
         glob_kwargs: dict = {"backend": backend}
@@ -159,6 +159,7 @@ class LocalWorkspace(WorkspaceBase):
             Grep(backend=backend),
             Read(backend=backend),
             Write(backend=backend),
+            A2UI(),
         ]
 
     async def initialize(self) -> None:

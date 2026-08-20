@@ -566,7 +566,7 @@ class WorkspaceBase:
             RuntimeError:
                 If the workspace has not been initialised yet.
         """
-        from ..tool import Bash, Edit, Glob, Grep, Read, Write
+        from ..tool import A2UI, Bash, Edit, Glob, Grep, Read, Write
 
         backend = self.get_backend()
         glob_kwargs: dict = {"backend": backend}
@@ -579,6 +579,7 @@ class WorkspaceBase:
             Grep(backend=backend),
             Read(backend=backend),
             Write(backend=backend),
+            A2UI(),
         ]
 
     def _declared_specs(
