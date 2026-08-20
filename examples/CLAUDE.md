@@ -15,13 +15,26 @@ If a feature is missing from the framework, prefer:
 
 ```
 examples/
-├── agent_service/     # FastAPI backend (port 8000) + pipeline router
+├── CLAUDE.md          # This file — AI assistant guidance
+├── README.md          # User-facing overview of all examples
+├── agent_service/     # FastAPI backend (port 8000)
+│   ├── main.py                # Entry point — create_app() + custom routers
+│   ├── pipeline_router.py     # Multi-step agent pipeline (sync + SSE)
+│   ├── custom_model_router.py # Add/remove/test custom model names
+│   ├── a2ui_tool.py           # A2UI custom tool (declarative UI)
+│   ├── models/                # Pre-configured model YAML files
+│   └── workspaces/            # Agent workspace data (gitignored)
 ├── console/           # Terminal-based agent interaction
 ├── long_term_memory/  # Memory middleware examples (agentic, mem0, reme)
 ├── rag/               # Retrieval-augmented generation examples
-├── web_ui/            # React + TypeScript frontend (port 5174)
-│   ├── frontend/      # Vite + React + shadcn/ui
-│   └── backend/       # Node.js BFF proxy
+├── web_ui/            # React + TypeScript frontend
+│   ├── frontend/      # Vite + React + shadcn/ui (port 5174)
+│   │   └── src/
+│   │       ├── api/           # API clients + types
+│   │       ├── components/     # UI components (a2ui, chat, etc.)
+│   │       ├── pages/         # Route pages (pipeline, chat, etc.)
+│   │       └── i18n/          # en.json / zh.json locales
+│   └── backend/       # Node.js BFF proxy (port 5175)
 └── workspace/         # Workspace/skill examples
 ```
 
@@ -40,6 +53,7 @@ examples/
 - **React + TypeScript**, shadcn/ui components
 - **i18n**: `en.json` / `zh.json` locale files in `frontend/src/i18n/locales/`
 - Dev server: `pnpm dev` (runs frontend on 5174 + backend BFF on 5175)
+- Monorepo: `pnpm dev:frontend` / `pnpm dev:backend` run individually
 
 ## Common Commands
 
@@ -76,7 +90,9 @@ pnpm format                             # Prettier + ESLint fix
 - Frontend: use `fetch` + `ReadableStream` reader, parse `data: ` lines
 - Event types: define union types in the API client file
 
-## Custom Model YAMLs
+## Custom Model Management
+
+### Pre-configured Model YAMLs
 
 The `agent_service/models/` directory contains pre-configured model YAML files (GLM-5, GLM-4.5V, DeepSeek-V4-Flash, MiniMax-M2, Qwen3-VL-30B). These are loaded by `_load_yaml_models()` in `custom_model_router.py` and merged with user-added custom models in the `/custom-model/{credential_id}` endpoint.
 
@@ -85,6 +101,17 @@ The `agent_service/models/` directory contains pre-configured model YAML files (
 - **Endpoint**: `GET /custom-model/{credential_id}` returns YAML models + user-added models
 
 These YAMLs were moved out of the framework source to demonstrate how to extend AgentScope with custom model definitions without modifying `src/agentscope/`.
+
+### Custom Model Router
+
+The `custom_model_router.py` implements endpoints for managing custom model names under a given credential:
+
+- `GET /custom-model/{credential_id}` — List all custom models (YAML + user-added)
+- `POST /custom-model/{credential_id}` — Add a custom model name
+- `DELETE /custom-model/{credential_id}/{model_name}` — Remove a custom model
+- `POST /custom-model/{credential_id}/test` — Test connection to a custom model
+
+User-added models are stored in `custom_models.json` (gitignored). On name conflicts, user-added models take precedence over YAML models.
 
 ## A2UI Custom Tool
 
@@ -104,12 +131,34 @@ The `agent_service/pipeline_router.py` implements a multi-step agent pipeline:
 - Execution flow: parent step → sub-steps (sequential) → parent re-runs with sub-step outputs (consolidation) → next step
 - Two endpoints: `POST /pipeline/run` (sync) and `POST /pipeline/run/stream` (SSE)
 - SSE events: `step_start`, `step_done`, `sub_step_done`, `step_final`, `pipeline_done`, `error`
+- Frontend page: `web_ui/frontend/src/pages/pipeline/`
+- API client: `web_ui/frontend/src/api/pipeline.ts`
+- Pipeline runs are stateless: each agent is assembled fresh from its stored config without session state, workspace tools, or middlewares
+
+## Extension Points
+
+The framework's `create_app()` provides several extension points that the example service uses:
+
+| Parameter | Purpose | Used in |
+|-----------|---------|---------|
+| `extra_agent_tools` | Async factory returning custom `ToolBase` instances | `a2ui_tool_factory` → A2UI tool |
+| `extra_agent_middlewares` | Async factory returning custom `MiddlewareBase` instances | `longterm_memory_factory` → AgenticMemoryMiddleware |
+| `custom_subagent_templates` | Custom subagent templates for team workflows | Explorer template (read-only) |
+| `workspace_manager` | Custom workspace backend | `LocalWorkspaceManager` |
+| `knowledge_base_manager` | Custom RAG knowledge base manager | `CollectionPerKbManager` |
+| `mcp_hubs` / `skill_hubs` | Resource hubs for the UI browser | GitHubMCPHub, ClawSkillHub |
+| `channels` | External messaging channels | DiscordChannel, FeishuChannel |
+
+Custom routers are added after `create_app()` returns via `app.include_router()`:
+- `pipeline_router` — multi-step agent pipeline
+- `custom_model_router` — custom model management
 
 ## Testing
 
 - Manual testing via the web UI at `http://localhost:5174`
 - Backend logs appear in the terminal running `python main.py`
 - Use the browser DevTools Network tab to inspect SSE streams
+- Framework unit tests: `pytest tests/` from repo root
 
 ## Git Workflow
 
