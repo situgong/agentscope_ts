@@ -76,6 +76,16 @@ pnpm format                             # Prettier + ESLint fix
 - Frontend: use `fetch` + `ReadableStream` reader, parse `data: ` lines
 - Event types: define union types in the API client file
 
+## Custom Model YAMLs
+
+The `agent_service/models/` directory contains pre-configured model YAML files (GLM-5, GLM-4.5V, DeepSeek-V4-Flash, MiniMax-M2, Qwen3-VL-30B). These are loaded by `_load_yaml_models()` in `custom_model_router.py` and merged with user-added custom models in the `/custom-model/{credential_id}` endpoint.
+
+- **YAML directory**: `examples/agent_service/models/`
+- **Loading**: `custom_model_router.py` → `_load_yaml_models()`
+- **Endpoint**: `GET /custom-model/{credential_id}` returns YAML models + user-added models
+
+These YAMLs were moved out of the framework source to demonstrate how to extend AgentScope with custom model definitions without modifying `src/agentscope/`.
+
 ## A2UI Custom Tool
 
 The `agent_service/a2ui_tool.py` contains the `A2UI` tool — a custom tool that lets agents emit declarative UI surfaces rendered by the `@a2ui/react` frontend. It is registered via `create_app(extra_agent_tools=a2ui_tool_factory)` in `main.py`.

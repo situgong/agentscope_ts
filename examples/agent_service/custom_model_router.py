@@ -20,6 +20,7 @@ import json
 import os
 from typing import Any
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
@@ -41,6 +42,55 @@ _STORE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "custom_models.json",
 )
+
+_YAML_MODELS_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "models",
+)
+
+
+def _load_yaml_models() -> list[dict[str, Any]]:
+    """Load model definitions from YAML files in the ``models/`` directory.
+
+    These are pre-configured model cards shipped with the example
+    service (e.g. GLM-5, DeepSeek-V4-Flash). They are merged with
+    user-added custom models in :func:`list_custom_models`.
+
+    Returns:
+        A list of model info dicts in the same shape as
+        :class:`CustomModelInfo`.
+    """
+    if not os.path.isdir(_YAML_MODELS_DIR):
+        return []
+
+    models: list[dict[str, Any]] = []
+    for filename in sorted(os.listdir(_YAML_MODELS_DIR)):
+        if not filename.endswith((".yaml", ".yml")):
+            continue
+        filepath = os.path.join(_YAML_MODELS_DIR, filename)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+            if not config or "name" not in config:
+                continue
+            models.append(
+                {
+                    "name": config["name"],
+                    "label": config.get("label", config["name"]),
+                    "status": config.get("status", "active"),
+                    "input_types": config.get(
+                        "input_types", ["text/plain"],
+                    ),
+                    "output_types": config.get(
+                        "output_types", ["text/plain"],
+                    ),
+                    "context_size": config.get("context_size"),
+                    "output_size": config.get("output_size"),
+                }
+            )
+        except (yaml.YAMLError, OSError, KeyError):
+            continue
+    return models
 
 
 def _load_store() -> dict[str, list[dict[str, Any]]]:
@@ -295,7 +345,16 @@ async def list_custom_models(
 
     store = _migrate_legacy(_load_store())
     raw = store.get(credential_id, [])
-    models = [CustomModelInfo(**m) for m in raw]
+    # Merge pre-configured YAML models with user-added custom models.
+    # YAML models are shared across all credentials; user-added models
+    # are per-credential. Duplicates (by name) are deduplicated, with
+    # user-added models taking precedence.
+    yaml_models = _load_yaml_models()
+    yaml_names = {m["name"] for m in raw}
+    merged = list(raw) + [
+        m for m in yaml_models if m["name"] not in yaml_names
+    ]
+    models = [CustomModelInfo(**m) for m in merged]
     return CustomModelListResponse(models=models)
 
 
