@@ -8,6 +8,7 @@ import { GitBranch } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../ui/button';
+import { ChatActionContext } from './ChatActionContext';
 import { DiffStats } from './tool-renderers/_shared';
 import type { GitStatus } from '@/api';
 import { ASMessageBubble } from '@/components/chat/ASMessageBubble.tsx';
@@ -151,6 +152,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 					{t('chat.greeting')}
 				</span>
 			) : (
+				<ChatActionContext.Provider value={{ send: onSend }}>
 				<MessageScrollerProvider autoScroll={true} defaultScrollPosition={'end'}>
 					<MessageScroller>
 						<MessageScrollerViewport>
@@ -169,6 +171,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 						<MessageScrollerButton className="rounded-full" />
 					</MessageScroller>
 				</MessageScrollerProvider>
+				</ChatActionContext.Provider>
 			)}
 
 			{loading ? null : (

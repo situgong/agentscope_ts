@@ -8,6 +8,7 @@ from ._base import ToolBase, ParamsBase, ToolMiddlewareBase
 from ._adapters import MCPTool, FunctionTool
 from ._builtin import (
     ResetTools,
+    A2UI,
     Bash,
     PowerShell,
     Edit,
@@ -48,6 +49,7 @@ __all__ = [
     "DirEntry",
     "ExecResult",
     "ResetTools",
+    "A2UI",
     "Bash",
     "PowerShell",
     "Edit",

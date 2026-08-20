@@ -2,6 +2,7 @@ import type { ToolCallBlock } from '@agentscope-ai/agentscope/message';
 import type { ReactNode } from 'react';
 
 import { ToolCallRow } from './_shared';
+import { A2UIRenderer } from './A2UIRenderer';
 import { BashRenderer } from './BashRenderer';
 import {
 	defaultGetDisplayName,
@@ -18,6 +19,7 @@ import type { TFunction, ToolCallWithResult, ToolRenderer } from './types';
 import { WriteRenderer } from './WriteRenderer';
 
 const renderers: Record<string, ToolRenderer> = {
+	A2UI: A2UIRenderer,
 	Bash: BashRenderer,
 	Read: ReadRenderer,
 	Write: WriteRenderer,

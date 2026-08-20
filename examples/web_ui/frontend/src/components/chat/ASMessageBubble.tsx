@@ -25,6 +25,7 @@ import { useEffect, useRef, useState } from 'react';
 import { renderToolCall } from './tool-renderers';
 import { countDiffStats, DiffStats, getResultDiff } from './tool-renderers/_shared';
 import type { TFunction, ToolCallWithResult } from './tool-renderers/types';
+import { A2UISurface } from '@/components/a2ui';
 import { Markdown } from '@/components/markdown';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -410,6 +411,20 @@ export function ASMessageBubble({ message }: MessageBubbleProps) {
 
 	const blocks = groupToolCalls(message.content);
 
+	// Extract A2UI DataBlocks from tool results so they render at the top
+	// level (visible immediately) rather than hidden inside collapsed tool
+	// call sections.
+	const a2uiSurfaces = message.content
+		.filter(
+			(b): b is ToolResultBlock =>
+				b.type === 'tool_result' && Array.isArray(b.output),
+		)
+		.flatMap((result) => result.output as ContentBlock[])
+		.filter(
+			(b): b is DataBlock =>
+				b.type === 'data' && b.source.media_type === 'application/a2ui+json',
+		);
+
 	// A fatal error terminated this reply. ``finished_reason`` / ``error`` are
 	// reply-level fields set by ``appendEvent`` on a ``REPLY_END`` with
 	// ``finished_reason === ReplyFinishedReason.ERROR`` — they are NOT content
@@ -450,8 +465,9 @@ export function ASMessageBubble({ message }: MessageBubbleProps) {
 						</AlertDescription>
 					</Alert>
 				)}
-				<AttachmentGroup className="max-w-full">
-					{blocks
+				<AttachmentGroup className="max-w-full">				{a2uiSurfaces.map((block, index) => (
+					<ASBlock block={block} key={`a2ui-${index}`} />
+				))}					{blocks
 						.filter((block) => block.type === 'data')
 						.map((block, index) => (
 							<ASBlock block={block} key={index} />
@@ -562,6 +578,14 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 		case 'data': {
 			const dataType = block.source.media_type.split('/')[0];
 			if (dataType === 'audio') return null;
+		// A2UI surfaces: media_type "application/a2ui+json"
+		if (block.source.media_type === 'application/a2ui+json') {
+			const rawA2UI =
+				block.source.type === 'url'
+					? block.source.url
+					: atob(block.source.data ?? '');
+			return <A2UISurface rawA2UI={rawA2UI} />;
+		}
 			const data =
 				block.source.type === 'url'
 					? block.source.url
