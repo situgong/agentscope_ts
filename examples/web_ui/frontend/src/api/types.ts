@@ -1018,9 +1018,15 @@ export interface ListKbEmbeddingModelsResponse {
 
 // ─── Pipeline ─────────────────────────────────────────────────────────────────
 
+export interface PipelineSubStep {
+	agent_id: string;
+	instruction: string;
+}
+
 export interface PipelineStep {
 	agent_id: string;
 	instruction: string;
+	sub_steps?: PipelineSubStep[];
 }
 
 export interface RunPipelineRequest {
@@ -1034,6 +1040,7 @@ export interface PipelineStepResult {
 	agent_name: string;
 	instruction: string;
 	reply: Msg;
+	sub_results?: PipelineStepResult[];
 }
 
 export interface RunPipelineResponse {
