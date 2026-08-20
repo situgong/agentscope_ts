@@ -55,19 +55,106 @@ examples/
 - Dev server: `pnpm dev` (runs frontend on 5174 + backend BFF on 5175)
 - Monorepo: `pnpm dev:frontend` / `pnpm dev:backend` run individually
 
-## Common Commands
+## Development Setup
+
+### Prerequisites
+
+- **Python ≥ 3.11** with `uv` package manager
+- **Node.js ≥ 20** with `pnpm`
+- **Redis** on `localhost:6379`
+- **Git** with SSH key configured for GitHub
+
+### First-Time Setup
 
 ```bash
-# Backend
-cd examples/agent_service
-python main.py                          # Start FastAPI on port 8000
+# 1. Clone your fork (if not already done)
+git clone git@github.com:situgong/agentscope_ts.git
+cd agentscope_ts
 
-# Frontend
+# 2. Add upstream remote (one-time)
+git remote add upstream https://github.com/agentscope-ai/agentscope.git
+
+# 3. Switch to the examples branch
+ git checkout my-examples
+
+# 4. Create virtual environment and install AgentScope in editable mode
+uv venv .venv
+# Windows:  .venv\Scripts\activate
+# Linux:    source .venv/bin/activate
+uv pip install -e "[full]"
+
+# 5. Start Redis
+docker run --rm -p 6379:6379 redis:7
+
+# 6. Start the backend (terminal 1)
+cd examples/agent_service
+python main.py                          # FastAPI on port 8000
+
+# 7. Start the frontend (terminal 2)
 cd examples/web_ui
-pnpm install                            # Install dependencies
-pnpm dev                                # Start dev servers (5174 + 5175)
+pnpm install
+pnpm dev                                # Vite on 5174 + BFF on 5175
+```
+
+Open `http://localhost:5174` and set the API endpoint to `http://localhost:8000`.
+
+### Daily Development
+
+```bash
+# Always work on my-examples — never commit to main
+git checkout my-examples
+
+# Backend: start the agent service
+cd examples/agent_service
+python main.py                          # FastAPI on port 8000
+
+# Frontend: start the web UI
+cd examples/web_ui
+pnpm dev                                # Frontend on 5174 + BFF on 5175
 pnpm build                              # Production build
 pnpm format                             # Prettier + ESLint fix
+```
+
+### Updating AgentScope from Upstream
+
+When the upstream framework releases updates, sync them into your fork:
+
+```bash
+# 1. Fetch and merge upstream changes into main
+git checkout main
+git fetch upstream
+git merge upstream/main
+git push origin main
+
+# 2. Merge upstream updates into your examples branch
+git checkout my-examples
+git merge main
+# Conflicts should be rare — examples/ and src/ don't overlap
+git push origin my-examples
+
+# 3. Reinstall AgentScope to pick up any new dependencies
+uv pip install -e "[full]"
+
+# 4. Restart the backend to load framework changes
+# (Ctrl+C in the backend terminal, then re-run)
+cd examples/agent_service
+python main.py
+```
+
+> **Why editable install?** AgentScope is installed with `uv pip install -e "[full]"`, which links to `src/agentscope/` in the repo. When you merge upstream changes, the framework code updates immediately — no reinstall needed unless `pyproject.toml` dependencies changed.
+
+### Installing a Specific Upstream Version
+
+If you need to pin to a specific upstream release instead of tracking `main`:
+
+```bash
+git checkout main
+git fetch upstream --tags
+git checkout <tag-name>          # e.g. v2.0.6
+git checkout -b pin-v2.0.6      # create a branch for the pin
+git checkout my-examples
+git merge pin-v2.0.6
+git push origin my-examples
 ```
 
 ## Coding Conventions
@@ -176,6 +263,13 @@ This repo is a fork of [agentscope-ai/agentscope](https://github.com/agentscope-
 - `origin` → `git@github.com:situgong/agentscope_ts.git` (your fork)
 - `upstream` → `https://github.com/agentscope-ai/agentscope.git` (original framework)
 
+### Branch Summary
+
+| Branch | Purpose | What goes here |
+|--------|---------|----------------|
+| `main` | Tracks upstream framework | Only upstream merges. Never commit directly |
+| `my-examples` | Your custom work | Only files under `examples/`. Never touch `src/agentscope/` |
+
 ### Daily Workflow
 
 ```bash
@@ -183,18 +277,9 @@ This repo is a fork of [agentscope-ai/agentscope](https://github.com/agentscope-
 git checkout my-examples
 # ... edit files in examples/ ...
 git commit -m "feat(pipeline): add new step type"
-
-# 2. When upstream framework updates, sync:
-git checkout main
-git fetch upstream
-git merge upstream/main          # or: git rebase upstream/main
-git push origin main             # push synced main to your fork
-
-# 3. Merge upstream updates into your examples branch
-git checkout my-examples
-git merge main                   # bring framework updates into your branch
-# Resolve conflicts if any (should be rare — examples/ and src/ don't overlap)
 git push origin my-examples
+
+# 2. When upstream framework updates, sync (see "Updating AgentScope from Upstream" above)
 ```
 
 ### Key Principle
