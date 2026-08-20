@@ -17,9 +17,11 @@ after ``create_app()`` returns — no core agentscope code is modified.
 """
 from __future__ import annotations
 
-from typing import Any
+import json
+from typing import Any, AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from agentscope.agent import Agent
@@ -289,3 +291,168 @@ async def run_pipeline(
         prev_reply = current_reply
 
     return RunPipelineResponse(results=results)
+
+
+# ── SSE streaming endpoint ─────────────────────────────────────────────
+
+
+def _sse(data: dict[str, Any]) -> str:
+    """Format a dict as an SSE ``data:`` frame.
+
+    Args:
+        data: The payload to serialise.
+
+    Returns:
+        ``data: {json}\\n\\n``
+    """
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@pipeline_router.post(
+    "/run/stream",
+    summary="Run a pipeline with streaming SSE output",
+)
+async def run_pipeline_stream(
+    request: RunPipelineRequest,
+    user_id: str = Depends(get_current_user_id),
+    access: ResourceAccessService = Depends(get_resource_access_service),
+) -> StreamingResponse:
+    """Run a pipeline, streaming each step's result as an SSE event.
+
+    Events emitted (each as ``data: {json}\\n\\n``):
+
+    - ``{"type": "step_start", "step_index": N, ...}`` — before a
+      parent step runs.
+    - ``{"type": "step_done", "step_index": N, ...}`` — after a parent
+      step completes, includes the agent's reply.
+    - ``{"type": "sub_step_done", "step_index": N, "sub_step_index": M, ...}``
+      — after a sub-step completes.
+    - ``{"type": "pipeline_done", "total_steps": N}`` — all steps done.
+    - ``{"type": "error", "message": "..."}`` — on failure.
+
+    Args:
+        request: The pipeline request with steps and model config.
+        user_id: Injected user ID.
+        access: Injected resource access service.
+
+    Returns:
+        A ``StreamingResponse`` with ``text/event-stream`` media type.
+    """
+
+    async def _stream() -> AsyncGenerator[str, None]:
+        prev_reply: Msg | None = None
+
+        for idx, step in enumerate(request.steps):
+            try:
+                agent = await _assemble_agent(
+                    user_id,
+                    step.agent_id,
+                    request.chat_model_config,
+                    access,
+                )
+            except HTTPException as exc:
+                yield _sse(
+                    {
+                        "type": "error",
+                        "step_index": idx,
+                        "message": exc.detail,
+                    },
+                )
+                return
+
+            yield _sse(
+                {
+                    "type": "step_start",
+                    "step_index": idx,
+                    "agent_id": step.agent_id,
+                    "agent_name": agent.name,
+                },
+            )
+
+            # Build the input: instruction + previous output (if any)
+            if prev_reply is not None:
+                prev_text = prev_reply.get_text_content() or ""
+                combined_instruction = (
+                    f"Previous step output:\n{prev_text}\n\n"
+                    f"Your instruction:\n{step.instruction}"
+                )
+                inputs: Msg | list[Msg] = UserMsg(
+                    name="pipeline",
+                    content=combined_instruction,
+                )
+            else:
+                inputs = UserMsg(name="pipeline", content=step.instruction)
+
+            reply = await agent.reply(inputs)
+
+            reply_data = reply.model_dump(mode="json")
+            yield _sse(
+                {
+                    "type": "step_done",
+                    "step_index": idx,
+                    "agent_id": step.agent_id,
+                    "agent_name": agent.name,
+                    "instruction": step.instruction,
+                    "reply": reply_data,
+                },
+            )
+
+            # Execute sub-steps
+            current_reply = reply
+            for sub_idx, sub_step in enumerate(step.sub_steps):
+                try:
+                    sub_agent = await _assemble_agent(
+                        user_id,
+                        sub_step.agent_id,
+                        request.chat_model_config,
+                        access,
+                    )
+                except HTTPException as exc:
+                    yield _sse(
+                        {
+                            "type": "error",
+                            "step_index": idx,
+                            "sub_step_index": sub_idx,
+                            "message": exc.detail,
+                        },
+                    )
+                    return
+
+                parent_text = current_reply.get_text_content() or ""
+                sub_combined = (
+                    f"Previous output:\n{parent_text}\n\n"
+                    f"Your instruction:\n{sub_step.instruction}"
+                )
+                sub_inputs = UserMsg(name="pipeline", content=sub_combined)
+                sub_reply = await sub_agent.reply(sub_inputs)
+
+                yield _sse(
+                    {
+                        "type": "sub_step_done",
+                        "step_index": idx,
+                        "sub_step_index": sub_idx,
+                        "agent_id": sub_step.agent_id,
+                        "agent_name": sub_agent.name,
+                        "instruction": sub_step.instruction,
+                        "reply": sub_reply.model_dump(mode="json"),
+                    },
+                )
+                current_reply = sub_reply
+
+            prev_reply = current_reply
+
+        yield _sse(
+            {
+                "type": "pipeline_done",
+                "total_steps": len(request.steps),
+            },
+        )
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
