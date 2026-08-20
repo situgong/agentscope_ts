@@ -1041,6 +1041,7 @@ export interface PipelineStepResult {
 	instruction: string;
 	reply: Msg;
 	sub_results?: PipelineStepResult[];
+	final_reply?: Msg;
 }
 
 export interface RunPipelineResponse {

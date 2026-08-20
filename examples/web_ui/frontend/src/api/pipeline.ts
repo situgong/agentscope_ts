@@ -6,6 +6,7 @@ export type PipelineStreamEvent =
 	| { type: 'step_start'; step_index: number; agent_id: string; agent_name: string }
 	| { type: 'step_done'; step_index: number; agent_id: string; agent_name: string; instruction: string; reply: Record<string, unknown> }
 	| { type: 'sub_step_done'; step_index: number; sub_step_index: number; agent_id: string; agent_name: string; instruction: string; reply: Record<string, unknown> }
+	| { type: 'step_final'; step_index: number; agent_id: string; agent_name: string; reply: Record<string, unknown> }
 	| { type: 'pipeline_done'; total_steps: number }
 	| { type: 'error'; message: string; step_index?: number; sub_step_index?: number };
 
