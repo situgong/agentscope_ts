@@ -26,6 +26,7 @@ from agentscope.mcp import MCPClient, StdioMCPConfig, HttpMCPConfig
 from agentscope.middleware import AgenticMemoryMiddleware, MiddlewareBase
 from agentscope.permission import PermissionContext, PermissionMode
 from agentscope.rag import ApproxTokenChunker, QdrantStore
+from agentscope.tool import ToolBase
 from agentscope.workspace import WorkspaceBase
 
 default_mcps = [
@@ -74,6 +75,19 @@ async def longterm_memory_factory(
             backend=workspace.get_backend(),
         ),
     ]
+
+
+async def a2ui_tool_factory(
+    user_id: str,
+    agent_id: str,
+    session_id: str,
+) -> list[ToolBase]:
+    """Register the A2UI custom tool so agents can emit declarative UI
+    surfaces rendered by the ``@a2ui/react`` frontend."""
+    del user_id, agent_id, session_id
+    from a2ui_tool import A2UI
+
+    return [A2UI()]
 
 
 app = create_app(
@@ -153,6 +167,9 @@ so anything you want them to see MUST be sent through `TeamSay`.""",
     # Long-term memory. The default PER_AGENT workspace isolation makes
     # the memory survive across sessions of the same agent.
     extra_agent_middlewares=longterm_memory_factory,
+    # A2UI custom tool — lets agents emit declarative UI surfaces
+    # rendered by the @a2ui/react frontend.
+    extra_agent_tools=a2ui_tool_factory,
     extra_middlewares=[
         Middleware(
             CORSMiddleware,
