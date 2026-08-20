@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { agentApi, pipelineApi, type AgentView, type ChatModelConfig, type PipelineStepResult } from '@/api';
+import type { PipelineStreamEvent } from '@/api/pipeline';
 import type { PipelineStep, PipelineSubStep } from '@/api/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -25,7 +26,8 @@ export function PipelinePage() {
 	]);
 	const [modelConfig, setModelConfig] = useState<ChatModelConfig | null>(null);
 	const [running, setRunning] = useState(false);
-	const [results, setResults] = useState<PipelineStepResult[] | null>(null);
+	const [results, setResults] = useState<PipelineStepResult[]>([]);
+	const [streamingStep, setStreamingStep] = useState<number | null>(null);
 	const [error, setError] = useState('');
 	const [credentialOpen, setCredentialOpen] = useState(false);
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
@@ -74,7 +76,8 @@ export function PipelinePage() {
 
 	const handleRun = async () => {
 		setError('');
-		setResults(null);
+		setResults([]);
+		setStreamingStep(null);
 
 		const valid = steps.filter((s) => s.agent_id && s.instruction.trim());
 		if (valid.length < 1) {
@@ -88,25 +91,90 @@ export function PipelinePage() {
 
 		setRunning(true);
 		try {
-			const res = await pipelineApi.run({
-				steps: valid.map((s) => ({
-					agent_id: s.agent_id,
-					instruction: s.instruction.trim(),
-					sub_steps: (s.sub_steps || [])
-						.filter((ss) => ss.agent_id && ss.instruction.trim())
-						.map((ss) => ({
-							agent_id: ss.agent_id,
-							instruction: ss.instruction.trim(),
-						})),
-				})),
-				chat_model_config: modelConfig,
-			});
-			setResults(res.results);
+			const stream = pipelineApi.runStream(
+				{
+					steps: valid.map((s) => ({
+						agent_id: s.agent_id,
+						instruction: s.instruction.trim(),
+						sub_steps: (s.sub_steps || [])
+							.filter((ss) => ss.agent_id && ss.instruction.trim())
+							.map((ss) => ({
+								agent_id: ss.agent_id,
+								instruction: ss.instruction.trim(),
+							})),
+					})),
+					chat_model_config: modelConfig,
+				},
+			);
+
+			for await (const evt of stream) {
+				handleStreamEvent(evt);
+			}
+
 			toast.success('Pipeline completed.');
 		} catch (e) {
 			setError(formatApiErrorForAlert(e));
 		} finally {
 			setRunning(false);
+			setStreamingStep(null);
+		}
+	};
+
+	const handleStreamEvent = (evt: PipelineStreamEvent) => {
+		switch (evt.type) {
+			case 'step_start':
+				setStreamingStep(evt.step_index);
+				setResults((prev) => {
+					const next = [...prev];
+					next[evt.step_index] = {
+						step_index: evt.step_index,
+						agent_id: evt.agent_id,
+						agent_name: evt.agent_name,
+						instruction: '',
+						reply: { content: [] } as Record<string, unknown>,
+						sub_results: [],
+					};
+					return next;
+				});
+				break;
+			case 'step_done':
+				setResults((prev) => {
+					const next = [...prev];
+					next[evt.step_index] = {
+						step_index: evt.step_index,
+						agent_id: evt.agent_id,
+						agent_name: evt.agent_name,
+						instruction: evt.instruction,
+						reply: evt.reply,
+						sub_results: next[evt.step_index]?.sub_results || [],
+					};
+					return next;
+				});
+				break;
+			case 'sub_step_done':
+				setResults((prev) => {
+					const next = [...prev];
+					const parent = next[evt.step_index];
+					if (parent) {
+						parent.sub_results = [
+							...(parent.sub_results || []),
+							{
+								step_index: evt.sub_step_index,
+								agent_id: evt.agent_id,
+								agent_name: evt.agent_name,
+								instruction: evt.instruction,
+								reply: evt.reply,
+							},
+						];
+					}
+					return next;
+				});
+				break;
+			case 'error':
+				setError(evt.message);
+				break;
+			case 'pipeline_done':
+				break;
 		}
 	};
 
@@ -324,26 +392,35 @@ export function PipelinePage() {
 				</div>
 
 				{/* Results */}
-				{results && (
+				{(results.length > 0 || running) && (
 					<Card>
 						<CardHeader>
 							<CardTitle>Results</CardTitle>
 							<CardDescription>
-								{results.length} step{results.length !== 1 ? 's' : ''} completed.
+								{running
+									? streamingStep !== null
+										? `Running step ${streamingStep + 1}…`
+										: 'Starting…'
+									: `${results.length} step${results.length !== 1 ? 's' : ''} completed.`}
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
 							{results.map((r, i) => (
 								<div key={i} className="border rounded-lg p-4 space-y-3">
 									<div className="flex items-center justify-between">
-										<span className="font-medium">
+										<span className="font-medium flex items-center gap-2">
+											{running && streamingStep === r.step_index && (
+												<Loader2 className="size-4 animate-spin" />
+											)}
 											Step {r.step_index + 1}: {r.agent_name}
 										</span>
 										<code className="text-xs text-muted-foreground">{r.agent_id}</code>
 									</div>
-									<div className="text-sm text-muted-foreground border-l-2 pl-3">
-										<span className="font-medium">Instruction:</span> {r.instruction}
-									</div>
+									{r.instruction && (
+										<div className="text-sm text-muted-foreground border-l-2 pl-3">
+											<span className="font-medium">Instruction:</span> {r.instruction}
+										</div>
+									)}
 									<div className="text-sm whitespace-pre-wrap bg-muted/50 rounded p-3">
 										{extractText(r.reply)}
 									</div>
