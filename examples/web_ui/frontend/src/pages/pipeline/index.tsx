@@ -1,0 +1,256 @@
+import { Loader2, Plus, Trash2, Play, GitBranch, ArrowDown } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+
+import { agentApi, pipelineApi, type AgentView, type ChatModelConfig, type PipelineStepResult } from '@/api';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { LlmSelect } from '@/components/select/LlmSelect';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { useTranslation } from '@/i18n/useI18n';
+import { formatApiErrorForAlert } from '@/lib/api-error';
+
+interface PipelineStep {
+	agent_id: string;
+	instruction: string;
+}
+
+export function PipelinePage() {
+	const { t } = useTranslation();
+	const [agents, setAgents] = useState<AgentView[]>([]);
+	const [loadingAgents, setLoadingAgents] = useState(true);
+	const [steps, setSteps] = useState<PipelineStep[]>([
+		{ agent_id: '', instruction: '' },
+		{ agent_id: '', instruction: '' },
+	]);
+	const [modelConfig, setModelConfig] = useState<ChatModelConfig | null>(null);
+	const [running, setRunning] = useState(false);
+	const [results, setResults] = useState<PipelineStepResult[] | null>(null);
+	const [error, setError] = useState('');
+	const [credentialOpen, setCredentialOpen] = useState(false);
+	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
+
+	useEffect(() => {
+		agentApi
+			.list()
+			.then((res) => setAgents(res.agents))
+			.catch((e) => setError(formatApiErrorForAlert(e)))
+			.finally(() => setLoadingAgents(false));
+	}, []);
+
+	const addStep = () =>
+		setSteps([...steps, { agent_id: '', instruction: '' }]);
+	const removeStep = (idx: number) =>
+		setSteps(steps.filter((_, i) => i !== idx));
+	const updateStep = (idx: number, patch: Partial<PipelineStep>) =>
+		setSteps(steps.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+
+	const handleRun = async () => {
+		setError('');
+		setResults(null);
+
+		const valid = steps.filter((s) => s.agent_id && s.instruction.trim());
+		if (valid.length < 1) {
+			setError('Each step needs an agent and an instruction.');
+			return;
+		}
+		if (!modelConfig) {
+			setError('Select a model.');
+			return;
+		}
+
+		setRunning(true);
+		try {
+			const res = await pipelineApi.run({
+				steps: valid.map((s) => ({
+					agent_id: s.agent_id,
+					instruction: s.instruction.trim(),
+				})),
+				chat_model_config: modelConfig,
+			});
+			setResults(res.results);
+			toast.success('Pipeline completed.');
+		} catch (e) {
+			setError(formatApiErrorForAlert(e));
+		} finally {
+			setRunning(false);
+		}
+	};
+
+	const extractText = (reply: Record<string, unknown>): string => {
+		const content = reply.content as Array<{ type: string; text?: string }> | undefined;
+		if (!content) return '(empty)';
+		return content
+			.filter((b) => b.type === 'text' && b.text)
+			.map((b) => b.text!)
+			.join('\n');
+	};
+
+	return (
+		<div className="flex flex-col h-full overflow-hidden">
+			<div className="flex-1 overflow-y-auto p-6 space-y-6 max-w-4xl mx-auto w-full">
+				<div>
+					<h1 className="text-2xl font-bold flex items-center gap-2">
+						<GitBranch className="size-6" />
+						Pipeline
+					</h1>
+					<p className="text-muted-foreground mt-1">
+						Chain agents with per-step instructions. Each agent receives your instruction
+						combined with the previous agent's output.
+					</p>
+				</div>
+
+				{error && (
+					<Alert variant="destructive">
+						<AlertDescription>{error}</AlertDescription>
+					</Alert>
+				)}
+
+				{/* Model selection */}
+				<Card>
+					<CardHeader>
+						<CardTitle>{t('common.model')}</CardTitle>
+						<CardDescription>Shared by all agents in the pipeline.</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<LlmSelect
+						value={modelConfig}
+						onChange={setModelConfig}
+						onAddCredential={() => setCredentialOpen(true)}
+						refetchTrigger={credentialRefetchTrigger}
+					/>
+					</CardContent>
+				</Card>
+
+				{/* Pipeline steps */}
+				<Card>
+					<CardHeader>
+						<CardTitle>Steps</CardTitle>
+						<CardDescription>
+							Each step runs an agent with its own instruction. The agent sees the
+							instruction plus the previous step's output.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{loadingAgents ? (
+							<div className="flex items-center gap-2 text-muted-foreground">
+								<Loader2 className="size-4 animate-spin" /> Loading agents…
+							</div>
+						) : agents.length === 0 ? (
+							<p className="text-sm text-muted-foreground">
+								No agents found. Create an agent first.
+							</p>
+						) : (
+							<>
+								{steps.map((step, idx) => (
+									<div key={idx} className="space-y-2">
+										{idx > 0 && (
+											<div className="flex justify-center py-1">
+												<ArrowDown className="size-4 text-muted-foreground" />
+											</div>
+										)}
+										<div className="flex items-start gap-2">
+											<span className="text-sm font-medium text-muted-foreground w-6 text-right pt-2">
+												{idx + 1}.
+											</span>
+											<div className="flex-1 space-y-2">
+												<Select
+													value={step.agent_id}
+													onValueChange={(v) => updateStep(idx, { agent_id: v })}
+												>
+													<SelectTrigger>
+														<SelectValue placeholder="Select an agent" />
+													</SelectTrigger>
+													<SelectContent>
+														{agents.map((a) => (
+															<SelectItem key={a.id} value={a.id}>
+																{a.data.name}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+												<Textarea
+													placeholder={`Instruction for step ${idx + 1}…`}
+													value={step.instruction}
+													onChange={(e) =>
+														updateStep(idx, { instruction: e.target.value })
+													}
+													rows={2}
+												/>
+											</div>
+											{steps.length > 1 && (
+												<Button
+													variant="ghost"
+													size="icon"
+													onClick={() => removeStep(idx)}
+													className="mt-2"
+												>
+													<Trash2 className="size-4" />
+												</Button>
+											)}
+										</div>
+									</div>
+								))}
+								<Button variant="outline" size="sm" onClick={addStep}>
+									<Plus className="size-4 mr-1" /> Add step
+								</Button>
+							</>
+						)}
+					</CardContent>
+				</Card>
+
+				{/* Run button */}
+				<div className="flex justify-end">
+					<Button onClick={handleRun} disabled={running || loadingAgents}>
+						{running ? (
+							<Loader2 className="size-4 animate-spin mr-2" />
+						) : (
+							<Play className="size-4 mr-2" />
+						)}
+						{running ? 'Running…' : 'Run Pipeline'}
+					</Button>
+				</div>
+
+				{/* Results */}
+				{results && (
+					<Card>
+						<CardHeader>
+							<CardTitle>Results</CardTitle>
+							<CardDescription>
+								{results.length} step{results.length !== 1 ? 's' : ''} completed.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							{results.map((r, i) => (
+								<div key={i} className="border rounded-lg p-4 space-y-3">
+									<div className="flex items-center justify-between">
+										<span className="font-medium">
+											Step {r.step_index + 1}: {r.agent_name}
+										</span>
+										<code className="text-xs text-muted-foreground">{r.agent_id}</code>
+									</div>
+									<div className="text-sm text-muted-foreground border-l-2 pl-3">
+										<span className="font-medium">Instruction:</span> {r.instruction}
+									</div>
+									<div className="text-sm whitespace-pre-wrap bg-muted/50 rounded p-3">
+										{extractText(r.reply)}
+									</div>
+								</div>
+							))}
+						</CardContent>
+					</Card>
+				)}
+			</div>
+
+			<CreateCredentialDialog
+				open={credentialOpen}
+				onOpenChange={setCredentialOpen}
+				onCreated={() => setCredentialRefetchTrigger((n) => n + 1)}
+			/>
+		</div>
+	);
+}

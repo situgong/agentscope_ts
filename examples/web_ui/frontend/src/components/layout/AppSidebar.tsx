@@ -4,17 +4,28 @@ import {
 	Cable,
 	Calendars,
 	Compass,
+	GitBranch,
 	KeyRound,
 	Languages,
 	LibraryBig,
+	Monitor,
+	Moon,
+	Sun,
 	UserRound,
 } from 'lucide-react';
 import { useOnborda } from 'onborda';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useTheme } from 'next-themes';
 
 import AgentScope from '@/assets/images/agentscope_white.svg?react';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { CHAT_TOUR_NAME } from '@/components/tour/chatTourSteps';
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
 	Sidebar,
 	SidebarContent,
@@ -34,6 +45,9 @@ export function AppSidebar() {
 	const location = useLocation();
 	const { t } = useTranslation();
 	const { startOnborda } = useOnborda();
+	const { theme, setTheme } = useTheme();
+
+	const themeIcon = theme === 'dark' ? <Moon /> : theme === 'light' ? <Sun /> : <Monitor />;
 
 	const handleStartTour = () => {
 		if (!location.pathname.startsWith('/chat')) {
@@ -145,12 +159,48 @@ export function AppSidebar() {
 									<LibraryBig />
 								</SidebarMenuButton>
 							</SidebarMenuItem>
+							<SidebarMenuItem>
+								<SidebarMenuButton
+									tooltip={{ children: t('common.pipeline'), hidden: false }}
+									isActive={location.pathname === '/pipeline'}
+									onClick={() => navigate('/pipeline')}
+									className="justify-center"
+								>
+									<GitBranch />
+								</SidebarMenuButton>
+							</SidebarMenuItem>
 						</SidebarMenu>
 					</SidebarGroupContent>
 				</SidebarGroup>
 			</SidebarContent>
 			<SidebarFooter>
 				<SidebarMenu>
+					<SidebarMenuItem>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<SidebarMenuButton
+									tooltip={{ children: t('common.theme'), hidden: false }}
+									className="justify-center"
+								>
+									{themeIcon}
+								</SidebarMenuButton>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent side="right" align="end">
+								<DropdownMenuItem onClick={() => setTheme('light')}>
+									<Sun className="size-4" />
+									{t('common.themeLight')}
+								</DropdownMenuItem>
+								<DropdownMenuItem onClick={() => setTheme('dark')}>
+									<Moon className="size-4" />
+									{t('common.themeDark')}
+								</DropdownMenuItem>
+								<DropdownMenuItem onClick={() => setTheme('system')}>
+									<Monitor className="size-4" />
+									{t('common.themeAuto')}
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</SidebarMenuItem>
 					<SidebarMenuItem>
 						<SidebarMenuButton
 							tooltip={{

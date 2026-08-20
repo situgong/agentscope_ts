@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ThemeProvider } from 'next-themes';
 
 import './index.css';
 import './i18n';
@@ -8,8 +9,10 @@ import { TooltipProvider } from '@/components/ui/tooltip.tsx';
 
 createRoot(document.getElementById('root')!).render(
 	<StrictMode>
-		<TooltipProvider>
-			<App />
-		</TooltipProvider>
+		<ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+			<TooltipProvider>
+				<App />
+			</TooltipProvider>
+		</ThemeProvider>
 	</StrictMode>,
 );

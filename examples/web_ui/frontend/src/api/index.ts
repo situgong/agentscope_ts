@@ -12,3 +12,5 @@ export { embeddingModelApi, modelApi, ttsModelApi } from './model';
 export { knowledgeBaseApi } from './knowledgeBase';
 export { channelApi } from './channel';
 export { healthApi } from './health';
+export { pipelineApi } from './pipeline';
+export { customModelApi } from './customModel';

@@ -201,6 +201,17 @@ svg.lucide {
 }
 
 .dark {
+	--text: #9ca3af;
+	--text-h: #f3f4f6;
+	--bg: #16171d;
+	--border: oklch(1 0 0 / 10%);
+	--code-bg: #1f2028;
+	--accent: oklch(0.269 0 0);
+	--accent-bg: rgba(192, 132, 252, 0.15);
+	--accent-border: rgba(192, 132, 252, 0.5);
+	--social-bg: rgba(47, 48, 58, 0.5);
+	--shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+
 	--background: oklch(0.145 0 0);
 	--foreground: oklch(0.985 0 0);
 	--card: oklch(0.205 0 0);
@@ -232,6 +243,12 @@ svg.lucide {
 	--sidebar-accent-foreground: oklch(0.985 0 0);
 	--sidebar-border: oklch(1 0 0 / 10%);
 	--sidebar-ring: oklch(0.556 0 0);
+
+	--color-text-secondary: #9ca3af;
+	--color-text-tertiary: #6b6f76;
+	--color-text-data: #8e939a;
+	--color-surface-muted: #1f2028;
+	--color-row-hover: rgba(255, 255, 255, 0.04);
 }
 
 @layer base {
