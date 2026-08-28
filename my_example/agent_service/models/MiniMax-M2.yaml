@@ -1,0 +1,23 @@
+name: MiniMax-M2
+label: MiniMax-M2
+api_type: chat_completions
+status: active
+
+input_types:
+  - text/plain
+
+output_types:
+  - text/plain
+
+context_size: 1048576
+output_size: 32768
+
+parameter_overrides:
+  max_tokens:
+    maximum: 32768
+  thinking_enable:
+    hidden: true
+  reasoning_effort:
+    hidden: true
+  voice:
+    hidden: true
