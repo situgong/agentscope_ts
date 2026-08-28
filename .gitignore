@@ -166,3 +166,7 @@ yarn-error.log*
 lerna-debug.log*
 
 **/workspaces/
+
+# Private runtime data — credentials and model configs with API keys/URLs
+examples/agent_service/custom_credentials.json
+examples/agent_service/custom_models.json
