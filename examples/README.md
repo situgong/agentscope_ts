@@ -31,7 +31,11 @@ A FastAPI-based, multi-tenant and multi-session agent service built with AgentSc
 uv pip install agentscope[full]
 
 # Start Redis (required for storage)
-docker run --rm -p 6379:6379 redis:7
+# Windows (Memurai):  Install from https://www.memurai.com/get-memurai
+#                     Memurai runs as a Windows service on port 6379 by default
+#                     CLI:  "D:\Program Files\Memurai\memurai-cli.exe"
+#                     Flush: memurai-cli.exe flushdb
+# Linux/Mac:          docker run --rm -p 6379:6379 redis:7
 
 # Start the agent service
 cd examples/agent_service
@@ -129,7 +133,11 @@ uv venv .venv
 uv pip install -e "[full]"
 
 # 5. Start Redis
-docker run --rm -p 6379:6379 redis:7
+#    Windows:  Install Memurai (https://www.memurai.com/get-memurai)
+#              It runs as a Windows service on port 6379 automatically
+#              CLI path:  "D:\Program Files\Memurai\memurai-cli.exe"
+#              Flush data:  memurai-cli.exe flushdb
+#    Linux/Mac:  docker run --rm -p 6379:6379 redis:7
 
 # 6. Start the backend (terminal 1)
 cd examples/agent_service

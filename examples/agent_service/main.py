@@ -21,6 +21,10 @@ from agentscope.app.channel import (
     DiscordChannel,
     FeishuChannel,
 )
+
+# Custom Agent subclass that gracefully handles stuck HITL sessions
+# (user sends a new message instead of confirming a tool call).
+from custom_agent import RobustAgent
 from agentscope.app.hub import ClawSkillHub, GitHubMCPHub
 from agentscope.app.message_bus import InMemoryMessageBus
 from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
@@ -184,6 +188,9 @@ so anything you want them to see MUST be sent through `TeamSay`.""",
     # A2UI custom tool — lets agents emit declarative UI surfaces
     # rendered by the @a2ui/react frontend.
     extra_agent_tools=a2ui_tool_factory,
+    # Use our custom Agent subclass that recovers from stuck HITL
+    # sessions instead of raising ValueError.
+    custom_agent_cls=RobustAgent,
     extra_middlewares=[
         Middleware(
             CORSMiddleware,
