@@ -72,6 +72,7 @@ Get-Process -Name "python","uvicorn","node" -ErrorAction SilentlyContinue |
 | Theme Switch | — | i18n `theme*` keys |
 | Windows EventLoop | `main.py` (ProactorEventLoop) | — |
 | DingTalk Channel | upstream `src/agentscope/app/channel/_dingtalk/` | — |
+| Quick Remove Session | — | `pages/chat/index.tsx` (trash icon on hover) |
 
 ## Git Workflow
 

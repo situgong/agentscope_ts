@@ -351,6 +351,17 @@ const ChatPageInner = () => {
 																		'HH:mm',
 																	)}
 																</SidebarMenuBadge>
+																<SidebarMenuAction
+																	showOnHover
+																	className="right-7 hover:text-destructive"
+																	onClick={() =>
+																		requestDeleteSession(
+																			session,
+																		)
+																	}
+																>
+																	<Trash2 />
+																</SidebarMenuAction>
 																<DropdownMenu>
 																	<DropdownMenuTrigger asChild>
 																		<SidebarMenuAction className="md:opacity-0 group-hover/menu-item:opacity-100 group-has-focus-visible/menu-item:opacity-100 aria-expanded:opacity-100 peer-data-active/menu-button:text-sidebar-accent-foreground">
@@ -437,6 +448,17 @@ const ChatPageInner = () => {
 																		'MMM dd',
 																	)}
 																</SidebarMenuBadge>
+																<SidebarMenuAction
+																	showOnHover
+																	className="right-7 hover:text-destructive"
+																	onClick={() =>
+																		requestDeleteSession(
+																			session,
+																		)
+																	}
+																>
+																	<Trash2 />
+																</SidebarMenuAction>
 																<DropdownMenu>
 																	<DropdownMenuTrigger asChild>
 																		<SidebarMenuAction className="md:opacity-0 group-hover/menu-item:opacity-100 group-has-focus-visible/menu-item:opacity-100 aria-expanded:opacity-100 peer-data-active/menu-button:text-sidebar-accent-foreground">

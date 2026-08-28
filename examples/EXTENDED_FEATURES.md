@@ -122,6 +122,14 @@ A first-run setup page that:
 - Validates connectivity before proceeding
 - Shows which subsystems are not ready (Redis, etc.)
 
+### Quick Remove Session (`frontend/src/pages/chat/index.tsx`)
+
+A direct trash-icon button on each session row in the sidebar that lets users delete a session in one click — no need to open the dropdown menu.
+- Appears on hover (via `SidebarMenuAction showOnHover`) next to the existing ellipsis dropdown
+- Positioned at `right-7` (left of the dropdown trigger at `right-1`) with `hover:text-destructive` styling
+- Opens the existing delete confirmation dialog — no silent deletion
+- Applied to both "Today" and "Earlier" session groups
+
 ---
 
 ## How Extensions Are Wired
