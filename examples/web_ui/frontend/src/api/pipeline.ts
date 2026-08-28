@@ -1,7 +1,14 @@
 import { client } from './client';
-import type { PipelineStepResult, RunPipelineRequest, RunPipelineResponse } from './types';
+import type {
+	GoalIterationResult,
+	PipelineStepResult,
+	RunGoalPipelineRequest,
+	RunGoalPipelineResponse,
+	RunPipelineRequest,
+	RunPipelineResponse,
+} from './types';
 
-/** SSE event emitted by the pipeline streaming endpoint. */
+/** SSE event emitted by the sequential pipeline streaming endpoint. */
 export type PipelineStreamEvent =
 	| { type: 'step_start'; step_index: number; agent_id: string; agent_name: string }
 	| { type: 'step_done'; step_index: number; agent_id: string; agent_name: string; instruction: string; reply: Record<string, unknown> }
@@ -10,12 +17,19 @@ export type PipelineStreamEvent =
 	| { type: 'pipeline_done'; total_steps: number }
 	| { type: 'error'; message: string; step_index?: number; sub_step_index?: number };
 
+/** SSE event emitted by the goal pipeline streaming endpoint. */
+export type GoalPipelineStreamEvent =
+	| { type: 'executor_done'; iteration: number; report: string }
+	| { type: 'verifier_done'; iteration: number; result: 'pass' | 'fail' | 'impossible'; message: string }
+	| { type: 'pipeline_done'; final_status: string }
+	| { type: 'error'; message: string };
+
 export const pipelineApi = {
 	run: (body: RunPipelineRequest) =>
 		client.post<RunPipelineResponse>('/pipeline/run', body),
 
 	/**
-	 * Run a pipeline with streaming SSE output.
+	 * Run a sequential pipeline with streaming SSE output.
 	 *
 	 * Yields events as each step/sub-step completes, so the UI can
 	 * display results progressively.
@@ -50,6 +64,53 @@ export const pipelineApi = {
 					if (line.startsWith('data: ')) {
 						const json = line.slice(6).trim();
 						if (json) yield JSON.parse(json) as PipelineStreamEvent;
+					}
+				}
+			}
+		} finally {
+			reader.releaseLock();
+		}
+	},
+
+	runGoal: (body: RunGoalPipelineRequest) =>
+		client.post<RunGoalPipelineResponse>('/pipeline/goal/run', body),
+
+	/**
+	 * Run a goal pipeline with streaming SSE output.
+	 *
+	 * Yields events as the executor and verifier complete each
+	 * iteration.
+	 *
+	 * @param body - The goal pipeline request.
+	 * @param signal - Optional abort signal to cancel the stream.
+	 */
+	runGoalStream: async function* (
+		body: RunGoalPipelineRequest,
+		signal?: AbortSignal,
+	): AsyncGenerator<GoalPipelineStreamEvent> {
+		const res = await client.stream('/pipeline/goal/run/stream', {
+			method: 'POST',
+			body,
+			signal,
+		});
+
+		const reader = res.body!.getReader();
+		const decoder = new TextDecoder();
+		let buffer = '';
+
+		try {
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() ?? '';
+
+				for (const line of lines) {
+					if (line.startsWith('data: ')) {
+						const json = line.slice(6).trim();
+						if (json) yield JSON.parse(json) as GoalPipelineStreamEvent;
 					}
 				}
 			}

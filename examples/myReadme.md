@@ -2,6 +2,8 @@
 
 Personal notes for running and extending the AgentScope examples on this machine.
 
+# model
+- [models](key.local.json), don't push this or commit this to repository
 ## Environment
 
 | Component | Value |
@@ -67,7 +69,8 @@ Get-Process -Name "python","uvicorn","node" -ErrorAction SilentlyContinue |
 |---------|---------|----------|
 | Custom Credentials | `custom_credential_router.py`, `custom_credentials.json` | `CreateCustomCredentialDialog.tsx`, `customCredential.ts` |
 | Custom Models | `custom_model_router.py`, `custom_models.json`, `models/*.yaml` | `customModel.ts` |
-| Pipeline | `pipeline_router.py` | `pages/pipeline/index.tsx`, `pipeline.ts` |
+| Pipeline (Sequential) | `pipeline_router.py`, `sequential_pipeline.py` | `pages/pipeline/index.tsx`, `pipeline.ts` |
+| Pipeline (Goal) | `goal_pipeline_router.py` | `pages/pipeline/index.tsx`, `pipeline.ts` |
 | A2UI Tool | `a2ui_tool.py`, `skills/a2ui-generation/SKILL.md` | `A2UISurface.tsx`, `A2UIRenderer.tsx` |
 | Theme Switch | — | i18n `theme*` keys |
 | Windows EventLoop | `main.py` (ProactorEventLoop) | — |

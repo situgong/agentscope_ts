@@ -58,8 +58,10 @@ const hitlKey = (e: { worker_session_id: string; reply_id: string }) =>
 /**
  * Lifecycle phase of the reply currently owned by this session.
  *
- * - ``idle`` — no in-flight reply; the send button is enabled.
- * - ``streaming`` — a reply is in progress (either actively producing
+ * - ``idle`` — no in-flight reply; the send button is enabled.	 * - ``preparing`` — a message has been sent (POST /chat/) but the
+	 *   backend has not yet emitted ``ReplyStartEvent``. The UI shows a
+	 *   "Preparing…" indicator so the user knows their message was
+	 *   received. Transitions to ``streaming`` on the first event. * - ``streaming`` — a reply is in progress (either actively producing
  *   events or parked awaiting HITL). The send button is replaced by a
  *   Stop button. The parked-vs-generating distinction is not tracked
  *   here; HITL cards render themselves from message content when a
@@ -70,7 +72,7 @@ const hitlKey = (e: { worker_session_id: string; reply_id: string }) =>
  *   to ``idle`` after a 10s safety timeout in case the terminating
  *   event never arrives (dropped SSE frame, backend bug, etc.).
  */
-export type ReplyPhase = 'idle' | 'streaming' | 'interrupting';
+export type ReplyPhase = 'idle' | 'preparing' | 'streaming' | 'interrupting';
 
 /** Safety fallback: force phase back to idle if REPLY_END is not seen. */
 const INTERRUPT_TIMEOUT_MS = 10_000;
@@ -359,6 +361,12 @@ export function useMessages(
 			msgsRef.current = [...msgsRef.current, userMsg];
 			scheduleUpdate();
 
+			// Immediately enter 'preparing' so the UI can show a
+			// "Preparing…" indicator while the backend assembles the
+			// agent (MCP connections, toolkit setup, etc.) before the
+			// first streaming event arrives.
+			setPhase('preparing');
+
 			try {
 				await chatApi.trigger({
 					agent_id: agentId,
@@ -367,6 +375,7 @@ export function useMessages(
 				});
 			} catch (e) {
 				setError(e as Error);
+				setPhase('idle');
 			}
 		},
 		[agentId, sessionId, scheduleUpdate],

@@ -6,7 +6,7 @@ import {
 	type TextBlock,
 	type ToolCallBlock,
 } from '@agentscope-ai/agentscope/message';
-import { GitBranch, TriangleAlert } from 'lucide-react';
+import { GitBranch, TriangleAlert, Loader2 } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../ui/button';
@@ -169,6 +169,12 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 										/>
 									</MessageScrollerItem>
 								))}
+								{phase === 'preparing' && (
+									<div className="flex items-center gap-2 py-2 px-1 text-sm text-muted-foreground">
+										<Loader2 className="h-4 w-4 animate-spin" />
+										<span>{t('chat.preparing')}</span>
+									</div>
+								)}
 								{msgs.length > 0 &&
 									msgs[msgs.length - 1].finished_reason ===
 										ReplyFinishedReason.EXCEED_MAX_ITERS &&

@@ -1153,6 +1153,28 @@ export interface RunPipelineResponse {
 	results: PipelineStepResult[];
 }
 
+// ─── Goal Pipeline ────────────────────────────────────────────────────────────
+
+export interface RunGoalPipelineRequest {
+	executor_agent_id: string;
+	verifier_agent_id: string;
+	instruction: string;
+	chat_model_config: ChatModelConfig;
+	max_iters?: number;
+}
+
+export interface GoalIterationResult {
+	iteration: number;
+	execution_report?: string | null;
+	verification_result?: string | null;
+	verification_message?: string | null;
+}
+
+export interface RunGoalPipelineResponse {
+	iterations: GoalIterationResult[];
+	final_status: string;
+}
+
 // ─── Custom Model ─────────────────────────────────────────────────────────────
 
 /**

@@ -6,13 +6,39 @@ This document lists all custom extensions built **on top of** the AgentScope fra
 
 ## Agent Service (`agent_service/`)
 
-### Pipeline (`pipeline_router.py`)
+### Pipeline (`pipeline_router.py`, `sequential_pipeline.py`)
 
 A multi-step agent pipeline where each step has its own agent and instruction. Steps can have sub-steps that run sequentially, after which the parent step re-runs with the combined sub-step outputs to produce a consolidated result.
+
+The `SequentialPipeline` class in `sequential_pipeline.py` implements the framework's `PipelineProtocol` interface (`reply_stream()`), making it compatible with any code that accepts a pipeline.
 
 - `POST /pipeline/run` — synchronous execution
 - `POST /pipeline/run/stream` — SSE streaming with progressive results
 - SSE events: `step_start`, `step_done`, `sub_step_done`, `step_final`, `pipeline_done`, `error`
+
+### Goal Pipeline (`goal_pipeline_router.py`)
+
+Exposes the framework's `GoalPipeline` (executor + verifier loop) via HTTP. An executor agent works toward a goal; a verifier agent checks whether the goal is met. The loop repeats until the verifier passes, judges the goal impossible, or `max_iters` is reached.
+
+- `POST /pipeline/goal/run` — synchronous execution
+- `POST /pipeline/goal/run/stream` — SSE streaming with per-iteration events
+- SSE events: `executor_done`, `verifier_done`, `pipeline_done`, `error`
+
+### Customer Service Pipelines (`setup_cs_agents.py`)
+
+A setup script that creates 4 specialised customer service agents via the `POST /agent/` API:
+
+| Agent | Role | Pipeline |
+|---|---|---|
+| CS Question Analyzer | Sequential Step 1 — classify & analyze | Sequential |
+| CS Problem Solver | Sequential Step 2 — solve the problem | Sequential |
+| CS Response Reviewer | Sequential Step 3 — review the response | Sequential |
+| CS Response Verifier | Goal Verifier — verify response quality | Goal |
+
+**Pipeline 1 — Sequential**: Check question → Solve → Check response
+**Pipeline 2 — Goal**: Customer Service Agent (executor) + CS Response Verifier (verifier)
+
+Run `python setup_cs_agents.py` to create the agents. The script is idempotent — it skips agents that already exist.
 
 ### Custom Model Management (`custom_model_router.py`)
 
@@ -57,11 +83,9 @@ A custom subagent template (`type="explorer"`) with `PermissionMode.EXPLORE` —
 
 ### Pipeline Builder (`frontend/src/pages/pipeline/`)
 
-A visual pipeline builder page where users can:
-- Add/remove pipeline steps, each with its own agent and instruction
-- Add sub-steps to any step
-- Run the pipeline synchronously or with SSE streaming
-- View progressive results as each step/sub-step completes
+A visual pipeline builder page with two modes:
+- **Sequential mode**: Add/remove pipeline steps, each with its own agent and instruction. Add sub-steps to any step. Run with SSE streaming and view progressive results as each step/sub-step completes.
+- **Goal mode**: Select an executor agent and a verifier agent, enter a goal instruction, and set max iterations. The executor works toward the goal while the verifier checks each iteration. View per-iteration execution reports and verification results.
 
 ### Custom Credential & Model Management (`frontend/src/pages/credential/`)
 
@@ -149,6 +173,7 @@ app = create_app(
 
 # Custom routers added after create_app()
 app.include_router(pipeline_router)
+app.include_router(goal_pipeline_router)
 app.include_router(custom_model_router)
 app.include_router(custom_credential_router)
 ```

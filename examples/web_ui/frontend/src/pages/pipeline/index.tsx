@@ -1,9 +1,9 @@
-import { Loader2, Plus, Trash2, Play, GitBranch, ArrowDown, ChevronRight, ChevronDown } from 'lucide-react';
+import { Loader2, Plus, Trash2, Play, GitBranch, ArrowDown, ChevronRight, ChevronDown, Target } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-import { agentApi, pipelineApi, type AgentView, type ChatModelConfig, type PipelineStepResult } from '@/api';
-import type { PipelineStreamEvent } from '@/api/pipeline';
+import { agentApi, pipelineApi, type AgentView, type ChatModelConfig, type GoalIterationResult, type PipelineStepResult } from '@/api';
+import type { GoalPipelineStreamEvent, PipelineStreamEvent } from '@/api/pipeline';
 import type { PipelineStep, PipelineSubStep } from '@/api/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,15 @@ export function PipelinePage() {
 	const [credentialOpen, setCredentialOpen] = useState(false);
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
 	const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+
+	// Goal pipeline state
+	const [pipelineMode, setPipelineMode] = useState<'sequential' | 'goal'>('sequential');
+	const [goalExecutorId, setGoalExecutorId] = useState('');
+	const [goalVerifierId, setGoalVerifierId] = useState('');
+	const [goalInstruction, setGoalInstruction] = useState('');
+	const [goalMaxIters, setGoalMaxIters] = useState(10);
+	const [goalResults, setGoalResults] = useState<GoalIterationResult[]>([]);
+	const [goalFinalStatus, setGoalFinalStatus] = useState('');
 
 	useEffect(() => {
 		agentApi
@@ -77,9 +86,7 @@ export function PipelinePage() {
 	const handleRun = async () => {
 		setError('');
 		setResults([]);
-		setStreamingStep(null);
-
-		const valid = steps.filter((s) => s.agent_id && s.instruction.trim());
+		setStreamingStep(null);		const valid = steps.filter((s) => s.agent_id && s.instruction.trim());
 		if (valid.length < 1) {
 			setError('Each step needs an agent and an instruction.');
 			return;
@@ -194,6 +201,87 @@ export function PipelinePage() {
 		}
 	};
 
+	const handleRunGoal = async () => {
+		setError('');
+		setGoalResults([]);
+		setGoalFinalStatus('');
+
+		if (!goalExecutorId || !goalVerifierId) {
+			setError('Select both an executor and a verifier agent.');
+			return;
+		}
+		if (!goalInstruction.trim()) {
+			setError('Enter an instruction for the goal pipeline.');
+			return;
+		}
+		if (!modelConfig) {
+			setError('Select a model.');
+			return;
+		}
+
+		setRunning(true);
+		try {
+			const stream = pipelineApi.runGoalStream(
+				{
+					executor_agent_id: goalExecutorId,
+					verifier_agent_id: goalVerifierId,
+					instruction: goalInstruction.trim(),
+					chat_model_config: modelConfig,
+					max_iters: goalMaxIters,
+				},
+			);
+
+			for await (const evt of stream) {
+				switch (evt.type) {
+					case 'executor_done':
+						setGoalResults((prev) => {
+							const next = [...prev];
+							const existing = next.find((r) => r.iteration === evt.iteration);
+							if (existing) {
+								existing.execution_report = evt.report;
+							} else {
+								next.push({
+									iteration: evt.iteration,
+									execution_report: evt.report,
+								});
+							}
+							return next;
+						});
+						break;
+					case 'verifier_done':
+						setGoalResults((prev) => {
+							const next = [...prev];
+							const existing = next.find((r) => r.iteration === evt.iteration);
+							if (existing) {
+								existing.verification_result = evt.result;
+								existing.verification_message = evt.message;
+							} else {
+								next.push({
+									iteration: evt.iteration,
+									verification_result: evt.result,
+									verification_message: evt.message,
+								});
+							}
+							return next;
+						});
+						break;
+					case 'pipeline_done':
+						setGoalFinalStatus(evt.final_status);
+						break;
+					case 'error':
+						setError(evt.message);
+						break;
+				}
+			}
+
+			toast.success('Goal pipeline completed.');
+		} catch (e) {
+			setError(formatApiErrorForAlert(e));
+		} finally {
+			setRunning(false);
+		}
+	};
+
 	const extractText = (reply: Record<string, unknown>): string => {
 		const content = reply.content as Array<{ type: string; text?: string }> | undefined;
 		if (!content) return '(empty)';
@@ -212,8 +300,7 @@ export function PipelinePage() {
 						Pipeline
 					</h1>
 					<p className="text-muted-foreground mt-1">
-						Chain agents with per-step instructions. Each agent receives your instruction
-						combined with the previous agent's output.
+						Chain agents with per-step instructions or run a goal-oriented executor-verifier loop.
 					</p>
 				</div>
 
@@ -223,7 +310,25 @@ export function PipelinePage() {
 					</Alert>
 				)}
 
-				{/* Model selection */}
+				{/* Mode selector */}
+				<div className="flex gap-2">
+					<Button
+						variant={pipelineMode === 'sequential' ? 'default' : 'outline'}
+						size="sm"
+						onClick={() => { setPipelineMode('sequential'); setError(''); }}
+					>
+						<GitBranch className="size-4 mr-1" /> Sequential
+					</Button>
+					<Button
+						variant={pipelineMode === 'goal' ? 'default' : 'outline'}
+						size="sm"
+						onClick={() => { setPipelineMode('goal'); setError(''); }}
+					>
+						<Target className="size-4 mr-1" /> Goal
+					</Button>
+				</div>
+
+				{/* Model selection — shared by both modes */}
 				<Card>
 					<CardHeader>
 						<CardTitle>{t('common.model')}</CardTitle>
@@ -239,6 +344,174 @@ export function PipelinePage() {
 					</CardContent>
 				</Card>
 
+				{pipelineMode === 'goal' && (
+					<>
+						{/* Goal pipeline config */}
+						<Card>
+							<CardHeader>
+								<CardTitle className="flex items-center gap-2">
+									<Target className="size-5" />
+									Goal Pipeline
+								</CardTitle>
+								<CardDescription>
+									An executor agent works toward a goal; a verifier agent checks
+									whether the goal is met. The loop repeats until the verifier
+									passes or max iterations is reached.
+								</CardDescription>
+							</CardHeader>
+							<CardContent className="space-y-4">
+								{loadingAgents ? (
+									<div className="flex items-center gap-2 text-muted-foreground">
+										<Loader2 className="size-4 animate-spin" /> Loading agents…
+									</div>
+								) : agents.length === 0 ? (
+									<p className="text-sm text-muted-foreground">
+										No agents found. Create an agent first.
+									</p>
+								) : (
+									<>
+										<FieldGroup>
+											<Field>
+												<FieldLabel>Executor Agent</FieldLabel>
+												<Select
+													value={goalExecutorId}
+													onValueChange={setGoalExecutorId}
+												>
+													<SelectTrigger>
+														<SelectValue placeholder="Select executor agent" />
+													</SelectTrigger>
+													<SelectContent>
+														{agents.map((a) => (
+															<SelectItem key={a.id} value={a.id}>
+																{a.data.name}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+												<FieldDescription>
+													Performs the work each iteration.
+												</FieldDescription>
+											</Field>
+											<Field>
+												<FieldLabel>Verifier Agent</FieldLabel>
+												<Select
+													value={goalVerifierId}
+													onValueChange={setGoalVerifierId}
+												>
+													<SelectTrigger>
+														<SelectValue placeholder="Select verifier agent" />
+													</SelectTrigger>
+													<SelectContent>
+														{agents.map((a) => (
+															<SelectItem key={a.id} value={a.id}>
+																{a.data.name}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+												<FieldDescription>
+													Evaluates whether the goal is achieved.
+												</FieldDescription>
+											</Field>
+											<Field>
+												<FieldLabel>Instruction (Goal)</FieldLabel>
+												<Textarea
+													placeholder="Describe the goal the executor should achieve…"
+													value={goalInstruction}
+													onChange={(e) => setGoalInstruction(e.target.value)}
+													rows={3}
+												/>
+											</Field>
+											<Field>
+												<FieldLabel>Max Iterations</FieldLabel>
+												<input
+													type="number"
+													min={1}
+													max={50}
+													value={goalMaxIters}
+													onChange={(e) => setGoalMaxIters(Number(e.target.value))}
+													className="flex h-9 w-24 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+												/>
+											</Field>
+										</FieldGroup>
+									</>
+								)}
+							</CardContent>
+						</Card>
+
+						{/* Run button */}
+						<div className="flex justify-end">
+							<Button onClick={handleRunGoal} disabled={running || loadingAgents}>
+								{running ? (
+									<Loader2 className="size-4 animate-spin mr-2" />
+								) : (
+									<Target className="size-4 mr-2" />
+								)}
+								{running ? 'Running…' : 'Run Goal Pipeline'}
+							</Button>
+						</div>
+
+						{/* Goal results */}
+						{(goalResults.length > 0 || running) && pipelineMode === 'goal' && (
+							<Card>
+								<CardHeader>
+									<CardTitle>Goal Pipeline Results</CardTitle>
+									<CardDescription>
+										{running
+											? 'Running…'
+											: goalFinalStatus
+												? `Final status: ${goalFinalStatus}`
+												: `${goalResults.length} iteration${goalResults.length !== 1 ? 's' : ''} completed.`}
+									</CardDescription>
+								</CardHeader>
+								<CardContent className="space-y-4">
+									{goalResults.map((iter, i) => (
+										<div key={i} className="border rounded-lg p-4 space-y-3">
+											<div className="flex items-center justify-between">
+												<span className="font-medium flex items-center gap-2">
+													{running && i === goalResults.length - 1 && (
+														<Loader2 className="size-4 animate-spin" />
+													)}
+													Iteration {iter.iteration}
+												</span>
+												{iter.verification_result && (
+													<span className={`text-xs px-2 py-0.5 rounded-full ${
+														iter.verification_result === 'pass'
+															? 'bg-green-100 text-green-700'
+															: iter.verification_result === 'fail'
+																? 'bg-yellow-100 text-yellow-700'
+																: 'bg-red-100 text-red-700'
+													}`}>
+														{iter.verification_result}
+													</span>
+												)}
+											</div>
+											{iter.execution_report && (
+												<div className="space-y-1">
+													<span className="text-sm font-medium">Execution Report</span>
+													<div className="text-sm whitespace-pre-wrap bg-muted/50 rounded p-3">
+														{iter.execution_report}
+													</div>
+												</div>
+											)}
+											{iter.verification_message && (
+												<div className="space-y-1">
+													<span className="text-sm font-medium">Verification</span>
+													<div className="text-sm whitespace-pre-wrap bg-muted/50 rounded p-3">
+														{iter.verification_message}
+													</div>
+												</div>
+											)}
+										</div>
+									))}
+								</CardContent>
+							</Card>
+						)}
+					</>
+				)}
+
+				{pipelineMode === 'sequential' && (
+				<>
 				{/* Pipeline steps */}
 				<Card>
 					<CardHeader>
@@ -476,6 +749,8 @@ export function PipelinePage() {
 							))}
 						</CardContent>
 					</Card>
+				)}
+				</>
 				)}
 			</div>
 

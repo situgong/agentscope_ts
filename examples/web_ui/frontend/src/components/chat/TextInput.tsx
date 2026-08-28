@@ -256,6 +256,14 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			disabled: boolean;
 			onClick: (() => void) | undefined;
 		} = (() => {
+			if (phase === 'preparing') {
+				return {
+					icon: Loader2,
+					tooltip: t('textInput.preparing'),
+					disabled: true,
+					onClick: undefined,
+				};
+			}
 			if (phase === 'streaming') {
 				return {
 					icon: Square,
@@ -510,7 +518,12 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 										size="icon-lg"
 										className="shrink-0 rounded-full"
 									>
-										<sendButton.icon className="h-4 w-4" />
+										<sendButton.icon
+										className={cn(
+											'h-4 w-4',
+											phase === 'preparing' && 'animate-spin',
+										)}
+									/>
 									</Button>
 								</TooltipTrigger>
 								<TooltipContent>{sendButton.tooltip}</TooltipContent>

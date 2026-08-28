@@ -105,7 +105,8 @@
 		"attachNotSupported": "This model does not support file attachments",
 		"send": "Send",
 		"stop": "Stop generating",
-		"stopping": "Stopping ..."
+		"stopping": "Stopping ...",
+		"preparing": "Preparing..."
 	},
 	"confirmCard": {
 		"toConfirm": "to confirm",
@@ -145,6 +146,7 @@
 		"subagentConfirmTitle": "{{name}} requests confirmation",
 		"newSession": "New Session",
 		"greeting": "Where should we start?",
+		"preparing": "Preparing…",
 		"maxItersExceeded": {
 			"title": "Reached the iteration limit",
 			"description": "Send a new message to keep going, or continue the current task.",

@@ -22,9 +22,10 @@ from agentscope.app.channel import (
     FeishuChannel,
 )
 
-# Custom Agent subclass that gracefully handles stuck HITL sessions
-# (user sends a new message instead of confirming a tool call).
-from custom_agent import RobustAgent
+# Custom Agent subclass that runs a 3-step CS pipeline (analyze → solve
+# → review) for the "Customer Service Agent", and recovers from stuck
+# HITL sessions for all other agents.
+from cs_pipeline_agent import CSPipelineAgent
 from agentscope.app.hub import ClawSkillHub, GitHubMCPHub
 from agentscope.app.message_bus import InMemoryMessageBus
 from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
@@ -37,16 +38,11 @@ from agentscope.rag import ApproxTokenChunker, QdrantStore
 from agentscope.tool import ToolBase
 from agentscope.workspace import WorkspaceBase
 
-default_mcps = [
-    MCPClient(
-        name="browser-use",
-        mcp_config=StdioMCPConfig(
-            command="npx",
-            args=["@playwright/mcp@latest"],
-        ),
-        is_stateful=True,
-    ),
-]
+# No default MCPs — each agent loads only the tools/MCPs it needs.
+# The previous "browser-use" (Playwright) MCP took ~72s to connect
+# on every chat run, which delayed the first token by that much.
+# Agents that need browser tools can add the MCP via the UI.
+default_mcps = []
 
 if os.getenv("AMAP_API_KEY"):
     default_mcps.append(
@@ -188,9 +184,10 @@ so anything you want them to see MUST be sent through `TeamSay`.""",
     # A2UI custom tool — lets agents emit declarative UI surfaces
     # rendered by the @a2ui/react frontend.
     extra_agent_tools=a2ui_tool_factory,
-    # Use our custom Agent subclass that recovers from stuck HITL
-    # sessions instead of raising ValueError.
-    custom_agent_cls=RobustAgent,
+    # Use our custom Agent subclass that runs a 3-step CS pipeline for
+    # the "Customer Service Agent" and recovers from stuck HITL sessions
+    # for all other agents.
+    custom_agent_cls=CSPipelineAgent,
     extra_middlewares=[
         Middleware(
             CORSMiddleware,
@@ -213,6 +210,12 @@ so anything you want them to see MUST be sent through `TeamSay`.""",
 from pipeline_router import pipeline_router
 
 app.include_router(pipeline_router)
+
+# Register the goal pipeline router — exposes the framework's
+# GoalPipeline (executor + verifier loop) via HTTP endpoints.
+from goal_pipeline_router import goal_pipeline_router
+
+app.include_router(goal_pipeline_router)
 
 # Register the custom model management router — lets users add/remove
 # custom model names and run connection tests from the credential page.
