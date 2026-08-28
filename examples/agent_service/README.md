@@ -85,4 +85,4 @@ After that, you can set the API endpoint `http://localhost:8000` in the Web UI a
 
 ## Custom Extensions
 
-This example includes several custom extensions built **on top of** the framework — no `src/agentscope/` files are modified. See **[EXTENDED_FEATURES.md](./EXTENDED_FEATURES.md)** for the full list and details.
+This example includes several custom extensions built **on top of** the framework — no `src/agentscope/` files are modified. See **[EXTENDED_FEATURES.md](../EXTENDED_FEATURES.md)** for the full list and details.

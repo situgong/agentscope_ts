@@ -104,6 +104,8 @@ The example service demonstrates how to extend AgentScope without modifying the 
 | `custom_subagent_templates` | Define a read-only "explorer" subagent |
 | `app.include_router()` | Add pipeline and custom model routers |
 
+For the full list of extended features across both the agent service and the web UI, see **[EXTENDED_FEATURES.md](EXTENDED_FEATURES.md)**.
+
 ## Development Setup
 
 ### Prerequisites
