@@ -8,9 +8,7 @@ import svgr from 'vite-plugin-svgr';
 export default defineConfig({
 	plugins: [react(), tailwindcss(), svgr()],
 	server: {
-		proxy: {
-			'/api': 'http://localhost:3000',
-		},
+		host: true,
 	},
 	resolve: {
 		alias: {
