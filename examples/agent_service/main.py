@@ -26,11 +26,14 @@ from agentscope.app.channel import (
 # → review) for the "Customer Service Agent", and recovers from stuck
 # HITL sessions for all other agents.
 from cs_pipeline_agent import CSPipelineAgent
+
+# Built-in agent definitions + startup seeder
+from _seed_agents import seed_inner_agents
 from agentscope.app.hub import ClawSkillHub, GitHubMCPHub
 from agentscope.app.message_bus import InMemoryMessageBus
 from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
 from agentscope.app.storage import RedisStorage
-from agentscope.app.workspace_manager import LocalWorkspaceManager
+from auto_cleanup_workspace_manager import AutoCleanupDockerWorkspaceManager
 from agentscope.mcp import MCPClient, StdioMCPConfig, HttpMCPConfig
 from agentscope.middleware import AgenticMemoryMiddleware, MiddlewareBase
 from agentscope.permission import PermissionContext, PermissionMode
@@ -106,7 +109,7 @@ app = create_app(
     #     host="localhost",
     #     port=6379,
     # ),
-    workspace_manager=LocalWorkspaceManager(
+    workspace_manager=AutoCleanupDockerWorkspaceManager(
         basedir=os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "workspaces",
@@ -228,6 +231,39 @@ app.include_router(custom_model_router)
 from custom_credential_router import custom_credential_router
 
 app.include_router(custom_credential_router)
+
+
+# ── Seed built-in agents on startup ─────────────────────────────
+# Inner agents (Customer Service Agent + 4 pipeline sub-agents) are
+# created automatically the first time the server starts.  The user
+# ID is configurable via the ``INNER_AGENT_USER_ID`` env var so
+# deployments can choose where the agents appear.
+_INNER_AGENT_USER_ID = os.getenv("INNER_AGENT_USER_ID", "inner")
+
+
+async def _seed_inner_agents() -> None:
+    """Create built-in agents if they don't already exist."""
+    await seed_inner_agents(storage, user_id=_INNER_AGENT_USER_ID)
+
+
+# Wrap the framework lifespan so seeding runs **after** storage and
+# other resources are entered (the original lifespan opens the Redis
+# connection, message bus, etc.).  Seeding happens once on startup,
+# before the first request is served.
+from contextlib import asynccontextmanager
+
+_orig_lifespan = app.router.lifespan_context
+
+
+@asynccontextmanager
+async def _lifespan_with_seeding(app_obj):
+    """Wrap the original lifespan to seed agents on startup."""
+    async with _orig_lifespan(app_obj):
+        await _seed_inner_agents()
+        yield
+
+
+app.router.lifespan_context = _lifespan_with_seeding
 
 
 if __name__ == "__main__":

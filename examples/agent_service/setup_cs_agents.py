@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Create customer service agents for the sequential and goal pipelines.
+"""Create customer service agents via the HTTP API (development utility).
 
-This script creates 4 agents via the AgentScope agent API:
+.. deprecated::
+    Agents are now seeded automatically on backend startup via
+    :func:`_seed_agents.seed_inner_agents`.  This script is kept as a
+    convenience for re-creating agents against a running server without
+    restarting it, or for seeding under a different user ID.
+
+Creates the 4 pipeline sub-agents via the AgentScope agent API:
 
 1. CS Question Analyzer  — Sequential Step 1: classify & analyze questions
 2. CS Problem Solver     — Sequential Step 2: solve the problem
 3. CS Response Reviewer  — Sequential Step 3: review the response
 4. CS Response Verifier  — Goal Verifier: verify response quality
-
-After running this script, the agents appear in the web UI's agent
-selector and can be used in the Pipeline page.
 
 Usage::
 
@@ -31,83 +34,16 @@ from typing import Any
 
 import requests
 
+# Reuse the canonical agent definitions so there is a single source of
+# truth — the list in ``_seed_agents.py`` is what the backend itself
+# uses at startup.
+from _seed_agents import INNER_AGENTS
 
-# ── Agent definitions ─────────────────────────────────────────────────
-
-
+# ``INNER_AGENTS`` includes the "Customer Service Agent" entry point,
+# but this script only creates the 4 pipeline sub-agents (the main
+# agent is expected to already exist or be auto-seeded by the backend).
 AGENTS: list[dict[str, Any]] = [
-    {
-        "name": "CS Question Analyzer",
-        "system_prompt": (
-            "You are a Customer Service Question Analyzer. Your job is to "
-            "carefully read a customer's question and produce a structured "
-            "analysis.\n\n"
-            "Your analysis must include:\n"
-            "1. **Question Type**: (e.g., product inquiry, complaint, "
-            "technical support, billing, refund, shipping)\n"
-            "2. **Urgency**: (low / medium / high / critical)\n"
-            "3. **Complexity**: (simple / moderate / complex)\n"
-            "4. **Key Information**: Extract the key facts and context\n"
-            "5. **Sentiment**: (positive / neutral / frustrated / angry)\n"
-            "6. **Suggested Approach**: Brief recommendation on how to "
-            "handle this question\n\n"
-            "Output only the structured analysis. Do not attempt to solve "
-            "the problem — that is the next agent's job."
-        ),
-    },
-    {
-        "name": "CS Problem Solver",
-        "system_prompt": (
-            "You are a Customer Service Problem Solver. You receive a "
-            "structured analysis of a customer's question (from the "
-            "Question Analyzer) and must provide a clear, actionable "
-            "solution.\n\n"
-            "Your response must include:\n"
-            "1. **Greeting**: Polite, personalized greeting\n"
-            "2. **Acknowledgment**: Acknowledge the customer's concern\n"
-            "3. **Solution**: Step-by-step solution or direct answer\n"
-            "4. **Additional Resources**: Links, references, or next steps\n"
-            "5. **Closing**: Professional closing with offer for further "
-            "help\n\n"
-            "Be concise but thorough. Use plain language. If the problem "
-            "cannot be resolved without additional information, clearly "
-            "state what is needed."
-        ),
-    },
-    {
-        "name": "CS Response Reviewer",
-        "system_prompt": (
-            "You are a Customer Service Response Reviewer. Your job is to "
-            "review a proposed customer service response for quality "
-            "before it is sent to the customer.\n\n"
-            "Check for:\n"
-            "1. **Accuracy**: Is the information correct?\n"
-            "2. **Tone**: Is it polite, empathetic, and professional?\n"
-            "3. **Completeness**: Does it fully address the customer's "
-            "question?\n"
-            "4. **Clarity**: Is it easy to understand?\n"
-            "5. **Safety**: Does it avoid sensitive or inappropriate "
-            "content?\n\n"
-            "If the response is acceptable, output it as the final "
-            "response with a brief note: \"[REVIEWED] Response approved.\"\n"
-            "If the response needs changes, output the corrected version "
-            "with a note: \"[REVIEWED] Response revised: <reason>.\""
-        ),
-    },
-    {
-        "name": "CS Response Verifier",
-        "system_prompt": (
-            "You are a Customer Service Response Verifier. You evaluate "
-            "whether a customer service response meets quality standards.\n\n"
-            "Evaluate the response on:\n"
-            "1. Does it directly address the customer's question?\n"
-            "2. Is the tone appropriate (polite, empathetic)?\n"
-            "3. Is the information accurate and complete?\n"
-            "4. Does it offer further assistance?\n\n"
-            "Respond with 'pass' if the response is acceptable, or 'fail' "
-            "if it needs improvement, along with a brief explanation."
-        ),
-    },
+    a for a in INNER_AGENTS if a["name"] != "Customer Service Agent"
 ]
 
 
